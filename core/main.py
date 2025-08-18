@@ -11,15 +11,15 @@ def getInst(line:str, curOff:int) -> str:
     char = ""
     res = ""
 
-    while not char == "|":
+    while not char == "|" and not char == "\n":
         char = line[curOff]
-        if char == "|":
+        if char == "|" or char == "\n":
             break
         res += char
     
     return res
 
-def parseInst(inst:str, nextInst:str, curMemOff:int, mem:bytearray, code:str) -> None:
+def parseInst(inst:str, nextInst:str, curMemOff:int) -> None:
     if inst == "mov":
         insts.mov(curMemOff)
     elif inst == "movn":
@@ -45,6 +45,7 @@ if __name__ == "__main__":
     memory = bytearray(512)
     memoffset = 0
 
+
     if (len(sys.argv) > 2):
         memory = bytearray(int(sys.argv[2]))
     
@@ -52,11 +53,11 @@ if __name__ == "__main__":
         data = f.read()
 
     lineNo = 0
-    lines = data.splitlines()
+    lines = data.splitlines(True)
 
     while True:
         line = lines[lineNo]
         inst = getInst(line, offset)
         Ninst = getInst(line, offset + len(inst) + 1)
 
-        parseInst(inst, Ninst, memoffset, memory, data)
+        parseInst(inst, Ninst, memoffset)
