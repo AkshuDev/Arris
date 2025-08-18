@@ -1,3 +1,3 @@
-fnc print(char* v){
+fnc void print(char* v){
     __py:print($v)
 }

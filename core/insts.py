@@ -1,4 +1,6 @@
 mem = bytearray(512)
+code = ""
+
 FUNCS:dict = {}
 
 def setMem(mem_:bytearray) -> None:
@@ -8,6 +10,15 @@ def setMem(mem_:bytearray) -> None:
 def getMem() -> bytearray:
     global mem
     return mem
+
+def setCode(code_:str) -> None:
+    global code
+    code = code_
+
+def getCode() -> str:
+    global code
+    return code
+
 
 def mov(currentOffset:int) -> int:
     """Move 1 byte forward"""
@@ -47,10 +58,17 @@ def run(lang:str, code:str) -> None:
     else:
         return
 
-def include(code:str, file:str) -> None:
+def include(file:str) -> None:
     """Includes another file"""
+    code = getCode()
+
     with open(file, "r") as f:
         code += "\n" + f.read()
     
 def addFunc(funcType:str, funcName:str, funcParams:list[tuple]) -> None:
-    pass
+    """Adds a new func"""
+    FUNCS[funcName] = {"type": funcType, "params": funcParams}
+
+def getFunc(funcName:str) -> dict:
+    """Gets a func"""
+    return FUNCS[funcName]
