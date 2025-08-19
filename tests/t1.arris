@@ -1,10 +1,17 @@
 __py:
+{
 print("Hello World")
+}
 
 __py:
+{
 print("See soo good")
+print("I can write soo many instructions in one goo!")
+}
 
 ## Hello Everyone!
 
 __py:
+{
 print("Bye")
+}
