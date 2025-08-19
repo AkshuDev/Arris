@@ -26,43 +26,15 @@ class Parser():
 
         newTokens.pop(len(newTokens) - 1) # Remove EOF
         for i, v in enumerate(newTokens):
-            self.tokens.insert(i + (offset + 1), v)
+            self.tokens.insert(i + (offset + 2), v)
 
         self.tokens.pop(offset)
+        self.tokens.pop(offset + 1) # INC token requires 2 tokens
 
-        return offset - 1
+        return offset - 2
 
     def run(self, lang:str, code:str, area:str):
         if lang == "python" or lang == "py":
-            if "$" in code:
-                offset = 0
-                offsets = []
-                inst = ""
-                insts = []
-                startTrack = False
-
-                for char in code:
-                    if char == "$":
-                        offsets.append(offset)
-                        startTrack = True
-                    
-                    if char == " " and inst:
-                        insts.append(inst)
-                        inst = ""
-                        startTrack = False
-
-                    if startTrack:
-                        inst += char
-
-                    offset += 1
-                
-                for i, inst_ in enumerate(insts):
-                    if inst_ == "$return":
-                        pass
-                    else:
-                        code[offsets[i]:offsets[i] + len(inst_)] = self.getVar(inst_.strip("$"), area)
-
-            print(code)
             exec(code)
             return
         
@@ -83,7 +55,7 @@ class Parser():
                 return None
             return VARS[area].get(name, None)
 
-    def addFunc(self, name:str, ret:str, params:list[str, str], code_tokens:list[tuple[str, str]]) -> None:
+    def addFunc(self, name:str, ret:str, params:list[str, str, str], code_tokens:list[tuple[str, str]]) -> None:
         FUNCS[name] = {"returnType": ret, "params": params, "code": code_tokens}
     
     def getFunc(self, name:str) -> dict:
@@ -92,7 +64,7 @@ class Parser():
         except KeyError:
             return None
         
-    def runFunc(self, name:str, paramsPassed:list[str]) -> tuple[str, str]:
+    def runFunc(self, name:str, paramsPassed:list) -> tuple[str, str]:
         func = self.getFunc(name)
         if func == None:
             errorHandler.error("[Parser]: No such function: " + name)
@@ -128,7 +100,7 @@ class Parser():
                 break
 
             if typ == TOK_INC:
-                i = self.include(val, i)
+                i = self.include(tokens[i + 1], i)
             elif typ == TOK_RUNLANG:
                 skip = 1
                 self.run(val, tokens[i + 1][1], area)
@@ -151,7 +123,7 @@ class Parser():
                     elif typ2 == TOK_LIT_UINT:
                         return val2
                     elif typ2 == TOK_FUNC:
-                        
+
                         return self.runFunc(val2, )
 
             else:

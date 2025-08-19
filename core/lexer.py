@@ -13,6 +13,7 @@ TOK_LIT_CHAR = "CHARLIT"
 TOK_LIT_STRING = "STRLIT"
 TOK_LIT_INT = "INTLIT"
 TOK_LIT_UINT = "UINTLIT"
+TOK_FORMAT_VAR = "FORMATVAR"
 # Data widths
 TOK_BIT = "BIT"
 TOK_BYTE = "BYTE"
@@ -27,209 +28,203 @@ TOK_DIV = "DIV"
 # Special Instructions
 TOK_CLR = "CLR"
 TOK_RUNLANG = "RUNLANG"
-TOK_RUNLANGCODE = "RUNLANGCODE"
+# Code Blocks and such
+TOK_CODE_BLOCK_OPEN = "CODEBLOCKOPEN"
+TOK_CODE_BLOCK_CLOSE = "CODEBLOCKCLOSE"
+TOK_LPAR = "LPAR"
+TOK_RPAR = "RPAR"
+# More Special
 TOK_SET = "SET"
 TOK_LET = "LET"
 TOK_PTR = "PTR"
 TOK_INC = "INC"
-TOK_FUNC = "FUNC"
 TOK_FUNCDEF = "FUNCDEF"
-TOK_FUNCPARAM = "FUNCPARAM"
-TOK_FUNCPARAMTYPE = "FUNCPARAMTYPE"
-TOK_FUNCSTART = "FUNCSTART"
-TOK_FUNCEND = "FUNCEND"
-TOK_FUNCRET = "FUNCRET"
 TOK_IDENTIFIER = "IDENTIFIER"
 TOK_RETURN = "RETURN"
+# Data types
+TOK_VOID = "VOID"
+TOK_INT = "INT"
+TOK_UINT = "UINT"
+TOK_CHAR = "CHAR"
 
 class Lexer():
     def __init__(self, code:str) -> None:
         self.code = code
-        self.lines = code.splitlines(False)
         self.offset = 0
-        self.instructions = []
-
-        for v in self.lines:
-            split = v.split(";")
-            for inst in split:
-                self.instructions.append(inst)
-
+        self.lineno = 1
+        
         self.tokens:list[tuple[str, str]] = []
     
     def peek(self) -> str:
-        if len(self.instructions) > self.offset + 1:
-            return self.instructions[self.offset + 1]
-        else:
-            return TOK_EOF
-        
-    def advance(self) -> str:
-        inst = self.peek()
-        if inst == TOK_EOF:
-            return inst
-        
-        self.offset += 1
-        return inst
+        if len(self.code) - 1 > self.offset:
+            return self.code[self.offset]
     
     def get(self) -> str:
-        if len(self.instructions) > self.offset:
-            return self.instructions[self.offset]
+        return self.code[self.offset]
+    
+    def advance(self) -> str:
+        val = self.peek()
+        if val:
+            self.offset += 1
+            return val
         else:
-            return TOK_EOF
+            self.offset += 1 # We still do it so the lexer knows it is eof
+            return None
+        
+    def getString(self) -> str:
+        c = self.get()
+        if not c == "\"": return None
+        self.advance()
 
-    def getString(self, line:str) -> str:
         res = ""
 
-        if not line.startswith("\""): return None
-
-        for char in line:
-            if char == "\"":
+        while True:
+            c = self.get()
+            if c == "\"":
                 break
-            res += char
 
+            res += c
+            self.advance()
         return res
     
-    def getInt(self, line:str) -> int:
-        resS = ""
+    def getInt(self) -> int:
+        c = self.get()
 
-        for char in line:
-            if not char.isdigit():
-                break
-            resS += char
-
-        if resS == "": return None
-        return int(resS)
+        if not c.isdigit(): return None
+        res = ""
+        while c.isdigit():
+            c = self.get()
+            if not c.isdigit(): break
+            res += c
+            self.advance()
+        
+        return int(res)
         
     def makeToken(self, tok:str, inst:str) -> None:
         self.tokens.append((tok, inst))
 
+    def handlemctokens(self) -> None:
+        s = ""
+        while True:
+            c = self.get()
+            if not c in "@_$:abcdefghijkmnopqrstuvwxyz1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+                if c == "\n":
+                    self.lineno += 1
+                break
+
+            s += c
+            self.advance()
+
+        if s == "mov":
+            self.makeToken(TOK_MOV, s)
+        elif s == "movb":
+            self.makeToken(TOK_MOVB, s)
+        elif s == "movn":
+            self.makeToken(TOK_MOVN, s)
+        elif s == "movbn":
+            self.makeToken(TOK_MOVBN, s)
+        elif s == "ret":
+            self.makeToken(TOK_RETURN, s)
+        elif s == "@inc":
+            self.makeToken(TOK_INC, s)
+        elif s == "__py__:":
+            self.makeToken(TOK_RUNLANG, "python")
+        elif s == "func":
+            self.makeToken(TOK_FUNCDEF, s)
+        elif s == "void":
+            self.makeToken(TOK_VOID, s)
+        elif s == "int":
+            self.makeToken(TOK_INT, s)
+        elif s == "uint":
+            self.makeToken(TOK_UINT, s)
+        elif s == "char":
+            self.makeToken(TOK_CHAR, s)
+        elif s == "ptr":
+            self.makeToken(TOK_PTR, s)
+        elif s.startswith("$"):
+            self.makeToken(TOK_FORMAT_VAR, s)
+        else:
+            self.makeToken(TOK_IDENTIFIER, s)
+
     def tokenize(self) -> list:
-        inst = self.get().strip("\t ")
-        instParts = inst.split(" ")
-        end = False
-        fopen = False
+        c:str = self.get()
+        i = self.offset
+        comment = False
 
-        while not end:
-            if end == True:
-                break
-
-            if instParts[0] == TOK_EOF:
+        while True:
+            i = self.offset
+            if len(self.code) <= i:
                 self.makeToken(TOK_EOF, "")
-                end = True
                 break
 
-            if instParts[0] == "mov":
-                self.makeToken(TOK_MOV, instParts[0])
-            elif instParts[0] == "movn":
-                self.makeToken(TOK_MOVN, instParts[0])
-                if not len(instParts) > 1:
-                    self.makeToken(TOK_LIT_INT, 1)
-                else:
-                    if not instParts[1].isdigit():
-                        errorHandler.error("[Lexer]: MOVN instruction got a non-numerical value! at instruction: " + str(self.offset + 1) + "\n\t" + inst)
-                    self.makeToken(TOK_LIT_INT, int(instParts[1]))
-            elif instParts[0] == "movb":
-                self.makeToken(TOK_MOVB, instParts[0])
-            elif instParts[0] == "movbn":
-                self.makeToken(TOK_MOVBN, instParts[0])
-                if not len(instParts) > 1:
-                    self.makeToken(TOK_LIT_INT, 1)
-                else:
-                    if not instParts[1].isdigit():
-                        errorHandler.error("[Lexer]: MOVBN instruction got a non-numerical value! at instruction: " + str(self.offset + 1) + "\n\t" + inst)
-                    self.makeToken(TOK_LIT_INT, int(instParts[1]))
-                    self.advance()
-            elif instParts[0] == "\n":
-                self.makeToken(TOK_ENDL, inst)
-            elif instParts[0] == "__py:":
-                self.makeToken(TOK_RUNLANG, "python")
-                if "{" not in inst:
-                    codeInst = self.advance()
-                    if codeInst != "{":
-                        errorHandler.error("[Lexer]: '{' expected!\n\t"+inst)
-                codeInst = self.advance()
-                code = ""
-                while "}" not in codeInst:
-                    code += codeInst + "\n"
-                    codeInst = self.advance()
-                    if codeInst == TOK_EOF:
-                        errorHandler.error("[Lexer]: '}' expected!\n\t"+inst)
-                self.makeToken(TOK_RUNLANGCODE, code)
-            elif instParts[0] == "@inc":
-                if len(instParts) < 2:
-                    errorHandler.error("[Lexer]: Must specify an include file!\n\t"+inst)
-                
-                include_path = inst.split["<"][1].replace(">", "")
-                self.makeToken(TOK_INC, include_path)
-            elif instParts[0] == "":
-                pass
-            elif instParts[0] == "##":
-                pass
-            elif instParts[0] == "func":
-                if len(instParts) < 3:
-                    errorHandler.error("[Lexer]: Invalid syntax!\n\t"+inst)
-                
-                ret = instParts[1]
-                name = ""
-                paramsStr = ""
+            c = self.get()
 
-                if "(" in instParts[2]:
-                    name = instParts[2].split("(")[0]
-                else:
-                    name = instParts[2]
-                
-                self.makeToken(TOK_FUNCDEF, name)
-                self.makeToken(TOK_FUNCRET, ret)
+            if comment and c == "\n":
+                comment = False
+                self.advance()
+                continue
+            if comment:
+                self.advance()
+                continue
 
-                for char in inst.split("(")[1]:
-                    if char == ")":
-                        break
-                    paramsStr += char
-
-                if paramsStr != "":
-                    params_ = paramsStr.split(",")
-                    for v in params_:
-                        v = v.strip(" ")
-
-                        param_d = v.split(" ")[0]
-                        param_name = v.split(" ")[1]
-                        self.makeToken(TOK_FUNCPARAMTYPE, param_d)
-                        self.makeToken(TOK_FUNCPARAM, param_name)
-                
-                if "{" in inst:
-                    pass
-                else:
-                    inst = self.advance()
-                    if inst != "{":
-                        errorHandler.error("[Lexer]: Expected '{'\n\t"+inst)
-                
-                self.makeToken(TOK_FUNCSTART, "{")
-                fopen = True
-            elif instParts[0] == "}" and fopen:
-                fopen = False
-                self.makeToken(TOK_FUNCEND, "}")
-            elif instParts[0] == "ret":
-                if len(instParts) < 2:
-                    self.makeToken(TOK_VOID, "void")
-                else:
-                    self.makeToken(TOK_RETURN, )
+            if c == "\n":
+                self.makeToken(TOK_ENDL, c)
+                self.advance()
+                self.lineno += 1
+                continue
+            elif c == ";":
+                self.makeToken(TOK_ENDL, c)
+                self.advance()
+                continue
+            elif c in " \t":
+                self.advance()
+                continue
+            elif c == "#":
+                if self.peek() == "#":
+                    comment = True
+                    continue
+            elif c == "+":
+                self.makeToken(TOK_PLUS, c)
+                self.advance()
+                continue
+            elif c == "-":
+                self.makeToken(TOK_SUB, c)
+                self.advance()
+                continue
+            elif c == "*":
+                self.makeToken(TOK_MUL, c)
+                self.advance()
+                continue
+            elif c == "/":
+                self.makeToken(TOK_DIV, c)
+                self.advance()
+                continue
+            elif c == "\"":
+                self.makeToken(TOK_LIT_STRING, self.getString())
+                self.advance() #Consume '"'
+                continue
+            elif c.isdigit():
+                self.makeToken(TOK_LIT_INT, self.getInt())
+                continue
+            elif c == "{":
+                self.makeToken(TOK_CODE_BLOCK_OPEN, c)
+                self.advance()
+                continue
+            elif c == "}":
+                self.makeToken(TOK_CODE_BLOCK_CLOSE, c)
+                self.advance()
+                continue
+            elif c == "(":
+                self.makeToken(TOK_LPAR, c)
+                self.advance()
+                continue
+            elif c == ")":
+                self.makeToken(TOK_RPAR, c)
+                self.advance()
+                continue
+            elif c.isalnum() or (c in "@_$"):
+                self.handlemctokens()
             else:
-                if "(" in inst and ")" in inst:
-                    self.makeToken(TOK_FUNC, instParts[0].replace("(", "").replace(")", ""))
-                    if not "()" in inst:
-                        paramsStr = ""
-                        paramfull = inst.split("(")[1]
-                        
-                        for char in paramfull:
-                            if char == ")":
-                                break
-                            paramsStr += char
+                errorHandler.error(f"Unknown Character at {self.lineno}/{self.offset}: {c}")
 
-                        for v in paramsStr.split(","):
-                            self.makeToken(TOK_FUNCPARAM, v.strip(" "))
-                else:
-                    self.makeToken(TOK_IDENTIFIER, instParts[0])
-            
-            inst = self.advance().strip("\t ")
-            instParts = inst.split(" ")
-        
         return self.tokens

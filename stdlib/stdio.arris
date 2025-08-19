@@ -1,7 +1,7 @@
-func void print(char* v) {
-    __py: {;print($v);}
+func void print(char ptr v) {
+    __py__: {print($v)}
 }
 
 func char* get_stdin(char* prompt) {
-    __py: {;$ret input($prompt);}
+    __py__: {$ret input($prompt)}
 }
