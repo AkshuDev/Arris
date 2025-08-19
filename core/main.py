@@ -45,5 +45,5 @@ if __name__ == "__main__":
         lex = lexer.Lexer(code)
         tokens = lex.tokenize()
         
-        parser_ = parser.Parser(memory, memsize, tokens)
+        parser_ = parser.Parser(memory, memsize, tokens, os.path.dirname(file_))
         parser_.parse()

@@ -31,6 +31,12 @@ TOK_SET = "SET"
 TOK_LET = "LET"
 TOK_PTR = "PTR"
 TOK_INC = "INC"
+TOK_FUNC = "FUNC"
+TOK_FUNCPARAM = "FUNCPARAM"
+TOK_FUNCPARAMTYPE = "FUNCPARAMTYPE"
+TOK_FUNCSTART = "FUNCSTART"
+TOK_FUNCEND = "FUNCEND"
+TOK_FUNCRET = "FUNCRET"
 
 class Lexer():
     def __init__(self, code:str) -> None:
@@ -73,6 +79,7 @@ class Lexer():
         inst = self.get()
         instParts = inst.split(" ")
         end = False
+        fopen = False
 
         while not end:
             if end == True:
@@ -127,6 +134,40 @@ class Lexer():
                 pass
             elif instParts[0] == "##":
                 pass
+            elif instParts[0] == "func":
+                if len(instParts) < 3:
+                    errorHandler.error("[Lexer]: Invalid syntax!\n\t"+inst)
+                
+                ret = instParts[1]
+                name = ""
+                paramsStr = ""
+                params = []
+
+                if "(" in instParts[2]:
+                    name = instParts[2].split("(")[0]
+                    paramsStr = instParts[2].split("(")[1].replace(")", "")
+                else:
+                    name = instParts[2]
+                    paramsStr = instParts[3].replace("(", "").replace(")", "")
+                
+                self.makeToken(TOK_FUNC, name)
+                self.makeToken(TOK_FUNCRET, ret)
+
+                if paramsStr != "":
+                    params_ = paramsStr.split(",")
+                    for v in params_:
+                        param_d = v.split(" ")[0]
+                        param_name = v.split(" ")[1]
+                        self.makeToken(TOK_FUNCPARAMTYPE, param_d)
+                        self.makeToken(TOK_FUNCPARAM, param_name)
+                
+                inst = self.advance()
+                if inst != "{":
+                    errorHandler.error("[Lexer]: Expected '{'\n\t"+inst)
+                
+                self.makeToken(TOK_FUNCSTART, "{")
+                fopen = True
+                        
             else:
                 errorHandler.error("Unknown instruction: " + inst)
             

@@ -1,3 +1,5 @@
+@inc inctest.arris
+
 __py:
 {
 print("Hello World")
