@@ -1,3 +1,7 @@
-fnc void print(char* v){
-    __py:print($v)
+func void print(char* v) {
+    __py: {;print($v);}
+}
+
+func char* get_stdin(char* prompt) {
+    __py: {;$ret input($prompt);}
 }

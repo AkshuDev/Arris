@@ -1,19 +1,4 @@
-@inc inctest.arris
+@inc <stdlib/stdio.arris>
 
-__py:
-{
-print("Hello World")
-}
-
-__py:
-{
-print("See soo good")
-print("I can write soo many instructions in one goo!")
-}
-
-## Hello Everyone!
-
-__py:
-{
-print("Bye")
-}
+## So i will use the stdlib for this
+print("Hello World!")

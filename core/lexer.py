@@ -27,16 +27,20 @@ TOK_DIV = "DIV"
 # Special Instructions
 TOK_CLR = "CLR"
 TOK_RUNLANG = "RUNLANG"
+TOK_RUNLANGCODE = "RUNLANGCODE"
 TOK_SET = "SET"
 TOK_LET = "LET"
 TOK_PTR = "PTR"
 TOK_INC = "INC"
 TOK_FUNC = "FUNC"
+TOK_FUNCDEF = "FUNCDEF"
 TOK_FUNCPARAM = "FUNCPARAM"
 TOK_FUNCPARAMTYPE = "FUNCPARAMTYPE"
 TOK_FUNCSTART = "FUNCSTART"
 TOK_FUNCEND = "FUNCEND"
 TOK_FUNCRET = "FUNCRET"
+TOK_IDENTIFIER = "IDENTIFIER"
+TOK_RETURN = "RETURN"
 
 class Lexer():
     def __init__(self, code:str) -> None:
@@ -71,12 +75,35 @@ class Lexer():
             return self.instructions[self.offset]
         else:
             return TOK_EOF
+
+    def getString(self, line:str) -> str:
+        res = ""
+
+        if not line.startswith("\""): return None
+
+        for char in line:
+            if char == "\"":
+                break
+            res += char
+
+        return res
+    
+    def getInt(self, line:str) -> int:
+        resS = ""
+
+        for char in line:
+            if not char.isdigit():
+                break
+            resS += char
+
+        if resS == "": return None
+        return int(resS)
         
     def makeToken(self, tok:str, inst:str) -> None:
         self.tokens.append((tok, inst))
 
     def tokenize(self) -> list:
-        inst = self.get()
+        inst = self.get().strip("\t ")
         instParts = inst.split(" ")
         end = False
         fopen = False
@@ -115,21 +142,24 @@ class Lexer():
                 self.makeToken(TOK_ENDL, inst)
             elif instParts[0] == "__py:":
                 self.makeToken(TOK_RUNLANG, "python")
-                codeInst = self.advance()
-                if codeInst != "{":
-                    errorHandler.error("[Lexer]: '{' expected!\n\t"+inst)
+                if "{" not in inst:
+                    codeInst = self.advance()
+                    if codeInst != "{":
+                        errorHandler.error("[Lexer]: '{' expected!\n\t"+inst)
                 codeInst = self.advance()
                 code = ""
-                while codeInst != "}":
+                while "}" not in codeInst:
                     code += codeInst + "\n"
                     codeInst = self.advance()
                     if codeInst == TOK_EOF:
                         errorHandler.error("[Lexer]: '}' expected!\n\t"+inst)
-                self.makeToken(TOK_RUNLANG, code)
+                self.makeToken(TOK_RUNLANGCODE, code)
             elif instParts[0] == "@inc":
                 if len(instParts) < 2:
                     errorHandler.error("[Lexer]: Must specify an include file!\n\t"+inst)
-                self.makeToken(TOK_INC, instParts[1])
+                
+                include_path = inst.split["<"][1].replace(">", "")
+                self.makeToken(TOK_INC, include_path)
             elif instParts[0] == "":
                 pass
             elif instParts[0] == "##":
@@ -141,37 +171,65 @@ class Lexer():
                 ret = instParts[1]
                 name = ""
                 paramsStr = ""
-                params = []
 
                 if "(" in instParts[2]:
                     name = instParts[2].split("(")[0]
-                    paramsStr = instParts[2].split("(")[1].replace(")", "")
                 else:
                     name = instParts[2]
-                    paramsStr = instParts[3].replace("(", "").replace(")", "")
                 
-                self.makeToken(TOK_FUNC, name)
+                self.makeToken(TOK_FUNCDEF, name)
                 self.makeToken(TOK_FUNCRET, ret)
+
+                for char in inst.split("(")[1]:
+                    if char == ")":
+                        break
+                    paramsStr += char
 
                 if paramsStr != "":
                     params_ = paramsStr.split(",")
                     for v in params_:
+                        v = v.strip(" ")
+
                         param_d = v.split(" ")[0]
                         param_name = v.split(" ")[1]
                         self.makeToken(TOK_FUNCPARAMTYPE, param_d)
                         self.makeToken(TOK_FUNCPARAM, param_name)
                 
-                inst = self.advance()
-                if inst != "{":
-                    errorHandler.error("[Lexer]: Expected '{'\n\t"+inst)
+                if "{" in inst:
+                    pass
+                else:
+                    inst = self.advance()
+                    if inst != "{":
+                        errorHandler.error("[Lexer]: Expected '{'\n\t"+inst)
                 
                 self.makeToken(TOK_FUNCSTART, "{")
                 fopen = True
-                        
+            elif instParts[0] == "}" and fopen:
+                fopen = False
+                self.makeToken(TOK_FUNCEND, "}")
+            elif instParts[0] == "ret":
+                if len(instParts) < 2:
+                    self.makeToken(TOK_VOID, "void")
+                else:
+                    self.makeToken(TOK_RETURN, )
             else:
-                errorHandler.error("Unknown instruction: " + inst)
+                if "(" in inst and ")" in inst:
+                    self.makeToken(TOK_FUNC, instParts[0].replace("(", "").replace(")", ""))
+                    if not "()" in inst:
+                        paramsStr = ""
+                        paramfull = inst.split("(")[1]
+                        
+                        for char in paramfull:
+                            if char == ")":
+                                break
+                            paramsStr += char
+
+                        for v in paramsStr.split(","):
+                            self.makeToken(TOK_FUNCPARAM, v.strip(" "))
+                else:
+                    self.makeToken(TOK_IDENTIFIER, instParts[0])
             
-            inst = self.advance()
+            inst = self.advance().strip("\t ")
             instParts = inst.split(" ")
         
         return self.tokens
