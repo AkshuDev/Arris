@@ -1,7 +1,11 @@
-func void print(char* v) {
+@import once
+
+func void print_stdout(const char* v, ) {
     __py__: {print($v)}
 }
 
 func char* get_stdin(char* prompt) {
     __py__: {$ret input($prompt)}
 }
+
+func void print(const char* v
