@@ -1,4 +1,4 @@
-func void print(char ptr v) {
+func void print(char* v) {
     __py__: {print($v)}
 }
 

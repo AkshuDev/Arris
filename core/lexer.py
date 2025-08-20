@@ -36,7 +36,6 @@ TOK_RPAR = "RPAR"
 # More Special
 TOK_SET = "SET"
 TOK_LET = "LET"
-TOK_PTR = "PTR"
 TOK_INC = "INC"
 TOK_FUNCDEF = "FUNCDEF"
 TOK_IDENTIFIER = "IDENTIFIER"
@@ -139,8 +138,6 @@ class Lexer():
             self.makeToken(TOK_UINT, s)
         elif s == "char":
             self.makeToken(TOK_CHAR, s)
-        elif s == "ptr":
-            self.makeToken(TOK_PTR, s)
         elif s.startswith("$"):
             self.makeToken(TOK_FORMAT_VAR, s)
         else:

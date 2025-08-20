@@ -1,4 +1,4 @@
-@inc <stdlib/stdio.arris>
+@inc "stdlib/stdio.arris"
 
 ## So i will use the stdlib for this
 print("Hello World!")

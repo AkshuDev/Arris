@@ -1,0 +1,90 @@
+{
+	"scopeName": "source.arris",
+	"fileTypes": [
+		"arris"
+	],
+	"name": "Arris",
+	"patterns": [
+		{
+			"match": "\\b(func|movn|mov|movb|movbn|clr|set|ret)\\b",
+			"name": "keyword.control.arris"
+		},
+		{
+			"match": "\\b(int|char|void|uint)\\b",
+			"name": "storage.type.arris"
+		},
+		{
+			"match": "[&*]",
+			"name": "keyword.operator.pointer.arris"
+		},
+		{
+			"match": "@inc\\b",
+			"name": "support.function.include.arris"
+		},
+		{
+			"begin": "__([a-zA-Z0-9_]+)__:",
+			"beginCaptures": {
+				"1": {
+					"name": "entity.name.function.language.arris"
+				}
+			},
+			"end": "\\n",
+			"name": "meta.embedded.block.$1.arris",
+			"patterns": [
+				{
+					"include": "source.$1"
+				}
+			]
+		},
+		{
+			"match": "[*\\/+\\-]",
+			"name": "keyword.operator.arithmetic.arris"
+		},
+		{
+			"begin": "\"",
+			"end": "\"",
+			"name": "string.quoted.double.arris",
+			"patterns": [
+				{
+					"match": "\\\\.",
+					"name": "constant.character.escape.arris"
+				}
+			]
+		},
+		{
+			"begin": "'",
+			"end": "'",
+			"name": "string.quoted.single.arris",
+			"patterns": [
+				{
+					"match": "\\\\.",
+					"name": "constant.character.escape.arris"
+				}
+			]
+		},
+		{
+			"match": "\\b(true|false|null)\\b",
+			"name": "constant.language.boolean.arris"
+		},
+		{
+			"match": "0x[0-9a-fA-F]+\\b",
+			"name": "constant.numeric.hexadecimal.arris"
+		},
+		{
+			"match": "(##.*$)",
+			"name": "comment.line.arris"
+		},
+		{
+			"match": "\\b\\d+(\\.\\d+)?\\b",
+			"name": "constant.numeric.arris"
+		},
+		{
+            "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b", 
+            "name": "variable.other.arris" 
+        },
+		{
+			"match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()",
+			"name": "support.function.call.arris"
+		}
+	]
+}

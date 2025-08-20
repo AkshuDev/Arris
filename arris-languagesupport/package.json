@@ -1,0 +1,75 @@
+{
+  "name": "arris-languagesupport",
+  "displayName": "Arris",
+  "description": "Language Support for Arris (By Pheonix Studios / AkshuDev)",
+  "version": "0.0.4",
+  "publisher": "pheonix-studios",
+  "engines": {
+    "vscode": "^1.103.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:arris"
+  ],
+  "main": "out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "arris",
+        "aliases": [
+          "Arris",
+          "arris"
+        ],
+        "extensions": [
+          ".arris",
+          ".arrislib",
+          ".ars",
+          ".arsl",
+          ".alib"
+        ]
+      }
+    ],
+    "semanticTokenTypes": [
+      {
+        "id": "keyword",
+        "superType": "keyword",
+        "description": "Keywords"
+      },
+      {
+        "id": "string",
+        "superType": "string",
+        "description": "Strings"
+      },
+      {
+        "id": "number",
+        "superType": "number",
+        "description": "Numbers"
+      },
+      {
+        "id": "function",
+        "superType": "function",
+        "description": "Functions"
+      },
+      {
+        "id": "comment",
+        "superType": "comment",
+        "description": "Comments"
+      },
+      {
+        "id": "identifier",
+        "superType": "identifier",
+        "description": "identifier"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.103.0",
+    "typescript": "^5.9.2"
+  }
+}
