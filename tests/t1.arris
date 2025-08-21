@@ -1,11 +1,4 @@
-##@inc "../stdlib/stdio.arris"
+@inc "stdlib/stdio.alib"
 
 ## So i will use the stdlib for this
-let char* prompt = "Is this a Library?:\n\t";
-
-__py__: {
-    "print('OS: $')
-print('ARCH: $')
-print('LIB: $')
-input('$')" __OS__ __ARCH__ __LIB__ prompt
-}
+print_stdout("Hello WORLD!")

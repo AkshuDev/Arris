@@ -14,6 +14,7 @@ TOK_LIT_CHAR = "CHARLIT"
 TOK_LIT_STRING = "STRLIT"
 TOK_LIT_INT = "INTLIT"
 TOK_LIT_UINT = "UINTLIT"
+TOK_LIT_BOOL = "BOOLLIT"
 TOK_FORMAT_VAR = "FORMATVAR"
 # Data widths
 TOK_BIT = "BIT"
@@ -46,6 +47,19 @@ TOK_VOID = "VOID"
 TOK_INT = "INT"
 TOK_UINT = "UINT"
 TOK_CHAR = "CHAR"
+TOK_BOOL = "BOOL"
+
+def toBool(val:bool) -> int:
+    if val == True: return 1
+    return 0
+
+def toBoolStr(val:bool) -> str:
+    if val == True: return "true"
+    return "false"
+
+def intToBool(val:int) -> bool:
+    if val == 1: return True
+    return 0
 
 class Lexer():
     def __init__(self, code:str) -> None:
@@ -80,26 +94,26 @@ class Lexer():
 
         while True:
             c = self.get()
+
+            if c == "\"":
+                break
+
             if c == "\\":
-                res += c
                 self.advance()
                 c = self.get()
 
                 if c == "n":
-                    res += "\n"
+                    res += "\\n"
                     self.advance()
                     continue
                 elif c == "t":
-                    res += "\t"
+                    res += "\\t"
                     self.advance()
                     continue
                 else:
                     res += c
                     self.advance()
                     continue
-
-            if c == "\"":
-                break
 
             res += c
             self.advance()
@@ -125,7 +139,7 @@ class Lexer():
         s = ""
         while True:
             c = self.get()
-            if not c in "@_$:abcdefghijkmnopqrstuvwxyz1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+            if not c in "@_$:abcdefghijklmnopqrstuvwxyz1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ":
                 if c == "\n":
                     self.lineno += 1
                 break
@@ -159,6 +173,12 @@ class Lexer():
             self.makeToken(TOK_CHAR, s)
         elif s.startswith("$"):
             self.makeToken(TOK_FORMAT_VAR, s)
+        elif s == "let":
+            self.makeToken(TOK_LET, s)
+        elif s == "true":
+            self.makeToken(TOK_LIT_BOOL, s)
+        elif s == "false":
+            self.makeToken(TOK_LIT_BOOL, s)
         else:
             self.makeToken(TOK_IDENTIFIER, s)
 
@@ -236,6 +256,10 @@ class Lexer():
                 continue
             elif c == ")":
                 self.makeToken(TOK_RPAR, c)
+                self.advance()
+                continue
+            elif c == "=":
+                self.makeToken(TOK_ASSIGN, c)
                 self.advance()
                 continue
             elif c.isalnum() or (c in "@_$"):

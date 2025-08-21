@@ -62,5 +62,5 @@ if __name__ == "__main__":
 
         if lexout: print(tokens, "\n")
         
-        parser_ = parser.Parser(memory, memsize, tokens, os.path.dirname(file_))
+        parser_ = parser.Parser(memory, memsize, tokens, [os.path.dirname(file_)])
         parser_.parse()
