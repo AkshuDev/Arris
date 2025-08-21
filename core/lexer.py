@@ -3,6 +3,7 @@ import errorHandler
 # Special
 TOK_ENDL = "ENDL"
 TOK_EOF = "EOF"
+TOK_ASSIGN = "ASSIGN"
 # Array based
 TOK_MOV = "MOV"
 TOK_MOVN = "MOVN"
@@ -79,6 +80,24 @@ class Lexer():
 
         while True:
             c = self.get()
+            if c == "\\":
+                res += c
+                self.advance()
+                c = self.get()
+
+                if c == "n":
+                    res += "\n"
+                    self.advance()
+                    continue
+                elif c == "t":
+                    res += "\t"
+                    self.advance()
+                    continue
+                else:
+                    res += c
+                    self.advance()
+                    continue
+
             if c == "\"":
                 break
 

@@ -3,7 +3,7 @@
 	"fileTypes": [
 		"arris"
 	],
-	"name": "Arris",
+	"name": "Arris", 
 	"patterns": [
 		{
 			"match": "\\b(func|movn|mov|movb|movbn|clr|set|ret)\\b",

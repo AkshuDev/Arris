@@ -15,7 +15,7 @@ class Parser():
         self.memsize = memorysize
         self.basedir = basedir
 
-    def include(self, file:str, offset:int) -> int:
+    def include(self, file:str, area:str) -> None:
         code = ""
         with open(os.path.join(self.basedir, file), "r") as f:
             f.seek(0)
@@ -24,16 +24,9 @@ class Parser():
         lex = Lexer(code)
         newTokens = lex.tokenize()
 
-        newTokens.pop(len(newTokens) - 1) # Remove EOF
-        for i, v in enumerate(newTokens):
-            self.tokens.insert(i + (offset + 2), v)
+        self.parse_toks(newTokens, area)
 
-        self.tokens.pop(offset)
-        self.tokens.pop(offset + 1) # INC token requires 2 tokens
-
-        return offset - 2
-
-    def run(self, lang:str, code:str, area:str):
+    def run(self, lang:str, code:str):
         if lang == "python" or lang == "py":
             exec(code)
             return
@@ -63,6 +56,53 @@ class Parser():
             return FUNCS[name]
         except KeyError:
             return None
+        
+    def formatStr(self, tokens:list[tuple[str, str]], offset:int, area:str) -> str:
+        i = offset + 1 # To get the variables
+        format_l = []
+        var_l = []
+        
+        while True:
+            typ = tokens[i][0]
+            val = tokens[i][1]
+
+            if not typ in [TOK_IDENTIFIER, TOK_LIT_STRING, TOK_LIT_CHAR, TOK_LIT_INT, TOK_LIT_UINT]:
+                break
+
+            var_l.append((typ, val))
+            i += 1
+
+        coff = 0
+        for char in tokens[offset][1]:
+            if char == "$":
+                format_l.append(coff)
+            coff += 1
+
+        if not len(var_l) == len(format_l):
+            errorHandler.error("Extra or Less variables passed onto the string for formatting.")
+        
+        res = tokens[offset][1].replace("\"", "")
+        old_len = 0
+        for i, v in enumerate(format_l):
+            val = ""
+
+            if var_l[i][0] == TOK_IDENTIFIER:
+                val = self.getVar(var_l[i][1], area)
+                if val == None:
+                    errorHandler.error("Unknown Variable: " + var_l[i][1])
+                val = val["value"]
+            else:
+                val = var_l[i][1]
+
+            if val == None:
+                errorHandler.error("Unknown Error Occured here: " + var_l[i][1])
+
+            res = res[:v] + val + res[v + 1:]
+            if not i == len(format_l) - 1:
+                format_l[i + 1] = format_l[i + 1] + old_len  + (len(val) - 1)
+                old_len += (len(val) - 1)
+
+        return res
         
     def runFunc(self, name:str, paramsPassed:list) -> tuple[str, str]:
         func = self.getFunc(name)
@@ -100,12 +140,13 @@ class Parser():
                 break
 
             if typ == TOK_INC:
-                i = self.include(tokens[i + 1], i)
+                self.include(tokens[i + 1][1], area)
             elif typ == TOK_RUNLANG:
                 skip = 1
-                self.run(val, tokens[i + 1][1], area)
-            elif typ == TOK_FUNC:
-                pass
+                if tokens[i + 2][0] == TOK_ENDL:
+                    self.run(val, self.formatStr(tokens, i + 3, area))
+                else:
+                    self.run(val, self.formatStr(tokens, i + 2, area))
             elif typ == TOK_RETURN and not area == "global":
                 if len(tokens) - 1 > i:
                     typ2 = tokens[i + 1]
@@ -122,12 +163,15 @@ class Parser():
                         return val2
                     elif typ2 == TOK_LIT_UINT:
                         return val2
-                    elif typ2 == TOK_FUNC:
-
-                        return self.runFunc(val2, )
 
             else:
                 pass
 
     def parse(self) -> None:
+        import platform
+        import sys
+
+        self.addVar("__OS__", TOK_LIT_STRING, platform.platform(), "global")
+        self.addVar("__ARCH__", TOK_LIT_STRING, platform.machine(), "global")
+        self.addVar("__LIB__", TOK_LIT_INT, "0", "global")
         return self.parse_toks(self.tokens)

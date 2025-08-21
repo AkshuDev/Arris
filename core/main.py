@@ -13,6 +13,7 @@ debug:bool = False
 compile_:bool = False
 memsize:int = 512
 onlylex:bool = False
+lexout:bool = False
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
@@ -31,6 +32,8 @@ if __name__ == "__main__":
                 memsize = helpers.ToInt(sys.argv[i + 1])
             elif v == "-onlylex":
                 onlylex = True
+            elif v == "-lexout":
+                lexout = True
             else:
                 file_ = v
 
@@ -56,6 +59,8 @@ if __name__ == "__main__":
         if debug: print("Got Code!\nRunning Lexer")
         lex = lexer.Lexer(code)
         tokens = lex.tokenize()
+
+        if lexout: print(tokens, "\n")
         
         parser_ = parser.Parser(memory, memsize, tokens, os.path.dirname(file_))
         parser_.parse()
