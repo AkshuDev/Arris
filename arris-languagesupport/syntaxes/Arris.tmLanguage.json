@@ -6,7 +6,7 @@
 	"name": "Arris", 
 	"patterns": [
 		{
-			"match": "\\b(func|movn|mov|movb|movbn|clr|set|ret)\\b",
+			"match": "\\b(func|movn|mov|movb|movbn|clr|set|ret|let)\\b",
 			"name": "keyword.control.arris"
 		},
 		{
