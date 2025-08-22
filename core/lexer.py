@@ -131,6 +131,9 @@ class Lexer():
             self.advance()
         
         return int(res)
+    
+    def get_last(self) -> tuple[str, str]: # Returns token
+        return self.tokens[len(self.tokens) - 1]
         
     def makeToken(self, tok:str, inst:str) -> None:
         self.tokens.append((tok, inst))
@@ -204,11 +207,18 @@ class Lexer():
                 continue
 
             if c == "\n":
+                if self.get_last()[0] == TOK_ENDL:
+                    self.advance()
+                    self.lineno += 1 # For \n only
+                    continue
                 self.makeToken(TOK_ENDL, c)
                 self.advance()
                 self.lineno += 1
                 continue
             elif c == ";":
+                if self.get_last()[0] == TOK_ENDL:
+                    self.advance()
+                    continue
                 self.makeToken(TOK_ENDL, c)
                 self.advance()
                 continue

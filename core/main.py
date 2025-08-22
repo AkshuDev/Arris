@@ -14,6 +14,7 @@ compile_:bool = False
 memsize:int = 512
 onlylex:bool = False
 lexout:bool = False
+parseout:bool = False
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
@@ -34,6 +35,8 @@ if __name__ == "__main__":
                 onlylex = True
             elif v == "-lexout":
                 lexout = True
+            elif v == "-parseout":
+                parseout = True
             else:
                 file_ = v
 
@@ -62,5 +65,6 @@ if __name__ == "__main__":
 
         if lexout: print(tokens, "\n")
         
-        parser_ = parser.Parser(memory, memsize, tokens, [os.path.dirname(file_)])
-        parser_.parse()
+        parser_ = parser.Parser(tokens)
+        stmts = parser_.parse()
+        if (parseout): print(stmts, "\n")

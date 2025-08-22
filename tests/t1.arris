@@ -1,4 +1,6 @@
-@inc "stdlib/stdio.alib"
+let int x = 1 + 2 * 3
+let int y = (x + 4) / 2;
 
-## So i will use the stdlib for this
-print_stdout("Hello WORLD!")
+__py__: {
+    "print(\"My var: $\")" "HI"
+}
