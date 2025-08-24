@@ -19,7 +19,7 @@ TOK_FORMAT_VAR = "FORMATVAR"
 # Data widths
 TOK_BIT = "BIT"
 TOK_BYTE = "BYTE"
-TOK_HWORD = "HWORD"
+TOK_DWORD = "DWORD"
 TOK_WORD = "WORD"
 TOK_QWORD = "QWORD"
 # Arithemetic
@@ -38,6 +38,7 @@ TOK_RPAR = "RPAR"
 # More Special
 TOK_SET = "SET"
 TOK_LET = "LET"
+TOK_GLOBAL = "GLOBAL"
 TOK_INC = "INC"
 TOK_FUNCDEF = "FUNCDEF"
 TOK_IDENTIFIER = "IDENTIFIER"
@@ -48,6 +49,7 @@ TOK_INT = "INT"
 TOK_UINT = "UINT"
 TOK_CHAR = "CHAR"
 TOK_BOOL = "BOOL"
+TOK_LONG = "LONG"
 
 def toBool(val:bool) -> int:
     if val == True: return 1
@@ -110,6 +112,10 @@ class Lexer():
                     res += "\\t"
                     self.advance()
                     continue
+                elif c == "$":
+                    res += "\\$"
+                    self.advance()
+                    continue
                 else:
                     res += c
                     self.advance()
@@ -168,14 +174,26 @@ class Lexer():
             self.makeToken(TOK_FUNCDEF, s)
         elif s == "void":
             self.makeToken(TOK_VOID, s)
+        elif s == "bit":
+            self.makeToken(TOK_BIT, s)
+        elif s == "dword":
+            self.makeToken(TOK_DWORD, s)
         elif s == "int":
             self.makeToken(TOK_INT, s)
         elif s == "uint":
             self.makeToken(TOK_UINT, s)
+        elif s == "word":
+            self.makeToken(TOK_WORD, s)
         elif s == "char":
             self.makeToken(TOK_CHAR, s)
+        elif s == "byte":
+            self.makeToken(TOK_BYTE, s)
+        elif s == "long":
+            self.makeToken(TOK_LONG, s)
         elif s.startswith("$"):
             self.makeToken(TOK_FORMAT_VAR, s)
+        elif s == "global":
+            self.makeToken(TOK_GLOBAL, s)
         elif s == "let":
             self.makeToken(TOK_LET, s)
         elif s == "true":

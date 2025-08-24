@@ -10,7 +10,7 @@
 			"name": "keyword.control.arris"
 		},
 		{
-			"match": "\\b(int|char|void|uint)\\b",
+			"match": "\\b(int|char|void|uint|long|bool|bit|byte|word|dword|qword)\\b",
 			"name": "storage.type.arris"
 		},
 		{

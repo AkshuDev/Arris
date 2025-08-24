@@ -6,6 +6,17 @@ from typing import List, Tuple, Optional
 import errorHandler
 from lexer import *
 
+ptr_size = 64 # bits
+
+# === Pointer ===
+def set_ptr_len(len:int) -> None:
+    global ptr_size
+    ptr_size = len
+
+def ptr_len() -> int:
+    global ptr_size
+    return ptr_size
+
 # === AST Node Classes ===
 class Expr: pass
 
@@ -34,8 +45,23 @@ class Var(Expr):
     def __repr__(self): return f"Var({self.name})"
 
 class VarDecl(Expr):
-    def __init__(self, var_type: str, name: str, value: Optional[Expr]):
-        self.var_type, self.name, self.value = var_type, name, value
+    def __init__(self, var_type: str, name: str, value: Optional[Expr], global_: bool = False, ptr: bool = False):
+        self.var_type, self.name, self.value, self.global_, self.ptr = var_type, name, value, global_, ptr
+        self.len = 0 # in bits
+
+        if self.var_type == TOK_CHAR or self.var_type == TOK_BYTE:
+            self.len = 8
+        elif self.var_type == TOK_WORD:
+            self.len = 16
+        elif (self.var_type == TOK_INT or self.var_type == TOK_UINT) or self.var_type == TOK_DWORD:
+            self.len = 32
+        elif self.var_type == TOK_QWORD or self.var_type == TOK_LONG:
+            self.len = 64
+        else:
+            errorHandler.error(f"Unkown variable type: {self.var_type} with value: {self.value}")
+
+        if self.ptr:
+            self.len = ptr_len()
     def __repr__(self):
         return f"VarDecl(type={self.var_type}, name={self.name}, value={self.value})"
 
@@ -137,13 +163,13 @@ class Parser:
         while self.peek()[0] not in [TOK_CODE_BLOCK_CLOSE, TOK_EOF]:
             if self.peek()[0] == TOK_LIT_STRING:
                 _, val = self.advance()
-                vars_list.append(val)
+                vars_list.append((TOK_LIT_STRING, val))
             elif self.peek()[0] == TOK_IDENTIFIER:
                 _, name = self.advance()
-                vars_list.append(name)
+                vars_list.append((TOK_IDENTIFIER, name))
             elif self.peek()[0] == TOK_LIT_CHAR:
                 _, val = self.advance()
-                vars_list.append(val)
+                vars_list.append((TOK_LIT_CHAR, val))
             else:
                 self.advance() # Skip unknown
 
@@ -153,16 +179,27 @@ class Parser:
     # === Statements ===
     def parse_stmt(self) -> Expr:
         typ, val = self.peek()
+        glb = False
+
+        if typ == TOK_GLOBAL:
+            glb = True
+            self.advance() # consume 'global'
 
         if typ == TOK_LET:
             self.advance()  # consume 'let'
 
             # expect type (int, char, uint, etc.)
             type_tok = self.advance()
-            if type_tok[0] not in [TOK_INT, TOK_UINT, TOK_CHAR, TOK_BOOL, TOK_VOID, TOK_IDENTIFIER]:
+            ptr = False
+
+            if type_tok[0] not in [TOK_INT, TOK_UINT, TOK_CHAR, TOK_BOOL, TOK_VOID, TOK_BIT, TOK_BYTE, TOK_DWORD, TOK_WORD, TOK_QWORD, TOK_LONG]:
                 errorHandler.error(f"Expected type after 'let', got {type_tok}")
 
-            var_type = type_tok[1]
+            var_type = type_tok[0]
+
+            if self.peek()[0] == TOK_MUL:
+                ptr = True
+                self.advance() # consume
 
             # now variable name
             name = self.expect(TOK_IDENTIFIER)[1]
@@ -171,9 +208,9 @@ class Parser:
             if self.peek()[0] == TOK_ASSIGN:
                 self.advance()
                 expr = self.parse_expr()
-                return VarDecl(var_type, name, expr)
+                return VarDecl(var_type, name, expr, glb, ptr)
 
-            return VarDecl(var_type, name, None)
+            return VarDecl(var_type, name, None, glb, ptr)
 
         elif typ == TOK_RETURN:
             self.advance()

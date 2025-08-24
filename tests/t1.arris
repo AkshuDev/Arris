@@ -1,6 +1,6 @@
-let int x = 1 + 2 * 3
+let dword x = 1 + 2 * 3
 let int y = (x + 4) / 2;
 
 __py__: {
-    "print(\"My var: $\")" "HI"
+    "print(\"My $var: \$: \$\")" "X" x
 }
