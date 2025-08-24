@@ -1,3 +1,4 @@
+import struct
 import os
 import sys
 
@@ -7,9 +8,11 @@ from phardwareitk.Memory.Memory import *
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
+import errorHandler
+
 # This is a modified assembler of my PVCpu Project (yeah i made it from scratch instead of copying)
 
-AVEF_MAGIC = "AVEF"
+AVEF_MAGIC = b"AVEF"
 AVEF_VERSION = 1 # 1.0
 
 X86_64_REG_MAP = {
@@ -83,8 +86,58 @@ class PVcpu():
     def __init__(self, asm:str, mem:Memory):
         self.asm = asm
         self.mem = mem
+        self.ram = mem.ram
+        self.code = bytearray()
+
         self.labels = {}
         self.fixups = []
 
-    def mk_headers(self) -> str:
-        pass
+        self.sections = {}
+        self.section_count = 0
+        self.section_table_offset = 65 # Starts at byte 65
+        self.flags = 0x0
+        self.entry_point = 0x0 # NULL
+
+    def mk_headers(self) -> bytearray:
+        header = bytearray()
+        header.extend(AVEF_MAGIC)
+        header.extend(struct.pack("<B", AVEF_VERSION))
+        header.extend(struct.pack("<I", 0xA0A0)) # 0xA0A0 = PVCpu
+        header.extend(struct.pack("<QQIQQs20", self.entry_point, self.section_table_offset, self.section_count, self.flags, self.mem.size, "\0"*20))
+        return header
+    
+    def assemble(self) -> None:
+        lines = self.asm.splitlines()
+        for line in lines:
+            self.assemble_line(line.strip())
+        
+        # Resolve fixups
+        for pos, label in self.fixups:
+            if label not in self.labels:
+                errorHandler.assemblerError(f"Unresolved Label: {label}")
+            struct.pack_into("<I", self.code, pos, self.labels[label])
+
+        self.section_count = len(self.sections.keys())
+
+        header = self.mk_headers()
+        self.mem.write_ram(header, 0, 64)
+
+    def assemble_line(self, line:str) -> None:
+        if ";;@" in line:
+            line = line.split(";;@")[0].strip()
+        elif ";;" in line:
+            line = line.split(";;")[0].strip()
+
+        if not line:
+            return
+        
+        parts = line.split()
+        instr = parts[0]
+
+        # Handle labels
+        if instr.endswith(":"):
+            self.labels[instr[:-1]] = len(self.code)
+            return
+        
+        if instr not in INSTSET:
+            errorHandler.assemblerError(f"Unknown Instruction: {instr}")
