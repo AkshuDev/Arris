@@ -1,0 +1,47 @@
+section .data
+section .bss
+section .rodata
+section .text
+global _main
+_main:
+	push qSF
+	mov qSF, qSP
+	sub qSF, 32
+	mov qG0, 1
+	push qG0
+	mov qG0, 2
+	push qG0
+	mov qG0, 3
+	mov qG1, qG0
+	pop qG2
+	imul qG2, qG1
+	mov qG0, qG2
+	mov qG1, qG0
+	pop qG2
+	add qG2, qG1
+	mov qG0, qG2
+	mov [qSF + 0], dG0
+	sub qSF, 32
+	mov dG0, [qSF + 0]
+	push qG0
+	mov qG0, 4
+	mov qG1, qG0
+	pop qG2
+	add qG2, qG1
+	mov qG0, qG2
+	push qG0
+	mov qG0, 2
+	mov qG1, qG0
+	pop qG2
+	mov qG0, qG2
+	cqo
+	idiv qG1
+	mov [qSF + 32], dG0
+;;@Runlang: python
+;;print("My $var: X: 7")
+;;@Runlang-End
+	mov qSP, qSF
+	pop qSF
+	mov qG0, 0
+	xor qG1, qG1
+	syscall

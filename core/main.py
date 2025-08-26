@@ -7,6 +7,8 @@ import lexer
 import parser
 import compiler
 
+from AVEF import Assembler, instructionSet
+
 from phardwareitk.Memory import Memory # My Own but it has something very important MEMORY!
 
 file_:str = None
@@ -18,9 +20,13 @@ memory:Memory.Memory = None
 onlylex:bool = False
 lexout:bool = False
 parseout:bool = False
+exitAfterParsing:bool = False
 files:list = []
 compileMode:int = 64
 compileOut:str = ""
+exitAfterCompile:bool = False
+asmOut:str = ""
+exitAfterAssembling:bool = False
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
@@ -45,8 +51,24 @@ if __name__ == "__main__":
                 parseout = True
             elif v == "--bits" and len(v.split("=")) > 1:
                 compileMode = helpers.ToInt(v.split("=")[1])
-            elif "--compile-out" in v and len(v.split("=")) > 1:
+            elif "--compiled-out" in v and len(v.split("=")) > 1:
                 compileOut = v.split("=")[1]
+            elif "--assembled-out" in v and len(v.split("=")) > 1:
+                asmOut = v.split("=")[1]
+            elif v == "-dump-avef" or v == "-avef-dump":
+                from AVEF import dumper
+                
+                d = b""
+                with open(files[0], "rb") as f:
+                    d = f.read()
+                dumper.dump_avef(d)
+                exit(0)
+            elif v == "-exit-acompile": # Exit after compile
+                exitAfterCompile = True
+            elif v == "-exit-aassemble": # Exit after Assemble
+                exitAfterAssembling = True
+            elif v == "-exit-aparse": # Exit after Parse
+                exitAfterParsing = True
             else:
                 file_ = v
                 files.append(file_)
@@ -88,6 +110,7 @@ if __name__ == "__main__":
         if debug: print("Parser Finished!")
 
         if (parseout): print(stmts, "\n")
+        if (exitAfterParsing): exit(0)
 
         if debug: print("Running Compiler...")
         compiler_ = compiler.ArrisCompiler64(stmts)
@@ -106,8 +129,20 @@ if __name__ == "__main__":
         if not compileOut == "" and not compileOut == "stdout":
             with open(compileOut, "w") as f:
                 f.write(compiled)
-        elif not compileOut == "" and compileOut == "stdout":
+        elif compileOut == "stdout":
             print(f"\nCompiled to Assembly:\n\n{compiled}")
+        
+        if (exitAfterCompile): exit(0)
 
-        if compileOut:
-            exit(0)
+        if debug: print("Running Assembler (PVCpu Architecture)...")
+        assembler = Assembler.PVcpuAssembler(compiled)
+        assembled = assembler.build_avef()
+        if debug: print("Assembled Code!")
+        if asmOut:
+            if asmOut == "stdout":
+                print(assembled)
+            else:
+                with open(asmOut, "wb") as f:
+                    f.write(assembled)
+        
+        if (exitAfterAssembling): exit(0)
