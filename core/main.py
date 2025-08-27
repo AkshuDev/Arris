@@ -136,7 +136,7 @@ if __name__ == "__main__":
 
         if debug: print("Running Assembler (PVCpu Architecture)...")
         assembler = Assembler.PVcpuAssembler(compiled)
-        assembled = assembler.build_avef()
+        assembled = assembler.assemble()
         if debug: print("Assembled Code!")
         if asmOut:
             if asmOut == "stdout":

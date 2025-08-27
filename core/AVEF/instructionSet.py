@@ -1,4 +1,13 @@
-# [opcode:u8][a:u32][b:u32][c:u32] Instruction format
+# [opcode:u16][a:u32][b:u32][c:u32][mode:u16] Instruction format (16-byte each)
+
+# Modes
+REGREG = 1 # Register into/to Register
+MEMREG = 2 # Memory + Register1 value into/to Register2
+MEMDIR = 3 # Memory into/to Register
+REGDIR = 4 # Imm into/to Register
+MEMONLY = 6 # Memory only
+IMMONLY = 7 # Imm only
+NULL = 0 # NULL
 
 # Core
 HALT = 0
@@ -22,11 +31,18 @@ ADD = 10
 SUB = 11
 MUL = 12
 DIV = 13
+AND = 14
+NOT = 15
+OR = 16
+NOR = 17
+XOR = 18
+SHL = 19
+SHR = 20
 
 # Jumping and more
-JMP = 20
-JMPT = 21
-JMPF = 22
+JMP = 21
+JMPT = 22
+JMPF = 23
 
 # Calling and more
 CALL = 30
@@ -42,10 +58,9 @@ CMP_GE = 45
 
 # Host interop for RunLang
 HOST = 60
+INT = 61
 
 SPECIAL_INST = 70
-
-INSTSET = [HALT, PUSHK, PUSHI, PUSHB, PUSHG, POPG, LOADL, STOREL, ADD, SUB, MUL, DIV, JMP, JMPT, JMPF, CALL, RET, CMP_EQ, CMP_NE, CMP_LT, CMP_LE, CMP_GT, CMP_GE, HOST, SPECIAL_INST]
 
 # Registers
 G0 = 62 # Cannot use 0 as it is reserved for NO VALUE

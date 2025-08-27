@@ -1,0 +1,11 @@
+{
+    "configurations": [
+        {
+            "name": "Python Debugger: Python File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "args": ["tests/t1.arris", "--compiled-out=tests/t1.vasm", "--assembled-out=tests/t1.avef"]
+        }
+    ]
+}

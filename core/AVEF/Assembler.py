@@ -2,6 +2,9 @@ import struct
 import os
 import sys
 from typing import List, Tuple, Dict, Optional
+import copy
+
+# This assembler uses PVCpu registers but custom format!
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from instructionSet import *
@@ -92,6 +95,7 @@ TK_EXTERN = 74
 TK_COMMENT = 75
 TK_SPECIAL = 76
 TK_CMP = 77
+TK_ENDL = 78
 
 # Constants
 AVEF_MAGIC = b"AVEF"
@@ -129,10 +133,30 @@ SEC_X = 1 << 2
 SEC_D = 1 << 3
 
 DEFAULT_SECTIONS = {
-    ".text":  {"vaddr": 0x1000, "flags": SEC_R | SEC_X,           "align": 0x10},
-    ".rodata":{"vaddr": 0x1800, "flags": SEC_R,                   "align": 0x10},
-    ".data":  {"vaddr": 0x2000, "flags": SEC_R | SEC_W | SEC_D,   "align": 0x08},
-    ".bss":   {"vaddr": 0x2800, "flags": SEC_R | SEC_W | SEC_D,   "align": 0x08},  # zero-filled
+    ".text":  {
+        "vaddr": 0x1000,
+        "flags": SEC_R | SEC_X,
+        "align": 0x10,
+        "size": 0
+    },
+    ".rodata":{
+        "vaddr": 0x1800,
+        "flags": SEC_R,
+        "align": 0x10,
+        "size": 0
+    },
+    ".data":  {
+        "vaddr": 0x2000,
+        "flags": SEC_R | SEC_W | SEC_D,
+        "align": 0x08,
+        "size": 0
+    },
+    ".bss":   {
+        "vaddr": 0x2800,
+        "flags": SEC_R | SEC_W | SEC_D,
+        "align": 0x08,
+        "size": 0
+    },  # zero-filled
 }
 
 # Lexer for the Assembler
@@ -255,7 +279,7 @@ class Lexer:
                 self.i += 1
                 continue
             if c == "\n":
-                self.i += 1
+                self._emit(TK_ENDL, c); self.i += 1; continue
                 continue
 
             if c == ";" and self._peek() == ";":  # ;;special (e.g., runlang)
@@ -338,27 +362,29 @@ class PVcpuAssembler:
         self.n = len(self.tokens)
 
         # sections
-        self.sections: Dict[str, Dict] = {}
-        for name, spec in DEFAULT_SECTIONS.items():
-            self.sections[name] = {
-                "name": name,
-                "vaddr": spec["vaddr"],
-                "flags": spec["flags"],
-                "align": spec["align"],
-                "bytes": bytearray(),
-                "size": 0,     # for BSS
-            }
+        self.sections: Dict[str, Dict] = copy.deepcopy(DEFAULT_SECTIONS)
+        for sec in self.sections:
+            # Check if bytes and size exist
+            b = self.sections[sec].get("bytes", None)
+            if not b:
+                self.sections[sec]["bytes"] = bytearray()
+            s = self.sections[sec].get("size", None)
+            if not s:
+                self.sections[sec]["size"] = 0
 
         self.current_section = ".text"
         self.labels: Dict[str, Dict] = {}    # name -> {"section": str, "ofs": int, "abs": int}
         self.globals: Dict[str, Dict] = {}   # exported
         self.externs: Dict[str, None] = {}
+        self.vars: Dict[str, int] = {} # Variables
+        self.special_count = 0
         self.entry_label: Optional[str] = None
         self.entry_point: int = 0
-
-        self.section_data = {".text": b"", ".data": b"", ".bss": b"", ".rodata": b""}
-
         self.last_vaddr = 0
+        self.tok = 1
+        self.line = 1
+        self.relocs: Dict[str, Dict] = {}
+        self.data_offset = 0
 
         self.align: int = 0x1000
 
@@ -372,12 +398,13 @@ class PVcpuAssembler:
     def _advance(self) -> Tuple[int, str]:
         t = self._peek(0)
         self.i += 1
+        self.tok += 1
         return t
 
     def _expect(self, typ: int, msg: str) -> Tuple[int, str]:
         t = self._advance()
         if t[0] != typ:
-            asm_error(msg + f" (got {t})")
+            asm_error(msg + f" (got '{t[1]}' at line: {self.line}, token: {self.tok})")
         return t
 
     def _at_eof(self) -> bool:
@@ -397,19 +424,21 @@ class PVcpuAssembler:
             }
         self.current_section = name
 
-    def _emit_bytes(self, data, width:int):
-        if not len(data) > width: asm_error("Internal Error, Wrong Length specified!")
+    def _emit_bytes(self, data_, width:int):
+        if len(data_) > width: asm_error("Internal Error, Wrong Length specified!")
 
-        if isinstance(data, str):
-            data = data.encode("utf-8")
-        elif isinstance(data, bytes):
-            pass
+        data = b""
+
+        if isinstance(data_, str):
+            data = data_.encode("utf-8")
+        elif isinstance(data_, bytes):
+            data = data_
         else:
             asm_error("Internal error, Wrong Data type provided!")
 
-        if len(data) < width: data.ljust(width, b"\x00")
+        if len(data) < width: data = data.ljust(width, b"\x00")
 
-        sec = self.section_data[self.current_section]
+        sec = self.sections[self.current_section]
         if self.current_section == ".bss":
             sec["size"] += len(data)  # not written into file; counts allocated bytes
         else:
@@ -418,19 +447,24 @@ class PVcpuAssembler:
     def _emit_imm_le(self, value: int, width: int):
         self._emit_bytes(int(value).to_bytes(width, "little", signed=False), width)
 
-    def _mklabel(self, name:str, section:str, global_:bool, import_:bool) -> None:
+    def _mklabel(self, name:str, section:str, global_:bool, import_:bool, size:int, cur_sec_off:int=0) -> None:
         # check if it exists
         label = self.labels.get(name, None)
-        if label: asm_error(f"Label: {name} is defined previously!")
+        if label:
+            is_global = label["global_"]
+            if not is_global:
+                asm_error(f"Label: {name} is defined previously!")
 
-        label[name] = {
+        self.labels[name] = {
             "section": section,
             "global_": global_,
-            "import_": import_
+            "import_": import_,
+            "location": cur_sec_off,
+            "size": size
         }
 
-    def _add_data_var(self, name:str, value:str, width:int) -> None:
-        self.section_data[".data"] += name.encode("utf-8").ljust(64, b"\x00")
+    def _add_global_var_str(self, name:str, value:str, width:int) -> None:
+        self._emit_bytes(name.encode("utf-8").ljust(64, b"\x00"), 64)
         w = b"\x00"
         if width == TK_DB:
             w = 0x8.to_bytes(2, "little")
@@ -442,14 +476,41 @@ class PVcpuAssembler:
             w = 0x64.to_bytes(2, "little")
         else: asm_error("Unknown Data Width: ", width)
 
-        self.section_data[".data"] += w
-        self.section_data[".data"] += value.encode("utf-8").ljust(128, "\x00")
+        value = value.encode("utf-8") + b"\x00"
 
-    def _emit_inst(self, inst:int, dest:int, src:int, imm:int) -> None:
+        self.vars[name] = len(self.sections[".data"]["bytes"])
+
+        self._emit_imm_le(len(value) * w, 4)
+        self._emit_bytes(value, len(value))
+
+    def _add_data_var_str(self, name:str, value:str, width:int, cur_sec:str) -> None:
+        self.current_section = ".data"
+        self._add_global_var_str(name, value, width)
+        self.current_section = cur_sec
+        self._mklabel(name, ".data", False, False, len(value) + 1, self.data_offset) # + 1 because of \x00
+        
+        self.data_offset += 64 + 4 + len(value) + 1
+
+    def _get_bracket_data(self) -> Tuple[Tuple[int, str]]:
+        lbrac = self._expect(TK_LBRACKET, "Expected '[',")
+        reg = self._expect(TK_IDENTIFIER, "Expected register name,")
+        opr = self._advance()
+
+        if opr == TK_RBRACKET:
+            return (MEMDIR, lbrac, reg, opr)
+
+        if not opr[0] in [TK_PLUS, TK_MINUS]: asm_error("Expected -/+ only,")
+
+        val = self._expect(TK_IDENTIFIER, "Expected number,")
+        rbrac = self._expect(TK_RBRACKET, "'[' Never closed!")
+        return (MEMREG, lbrac, reg, opr, val, rbrac)
+
+    def _emit_inst(self, inst:int, dest:int, src:int, imm:int, mode:int=REGREG) -> None:
         self._emit_imm_le(inst, 2)
         self._emit_imm_le(src, 4)
         self._emit_imm_le(dest, 4)
         self._emit_imm_le(imm, 8)
+        self._emit_imm_le(mode, 2)
 
     # Assembler singlular instructions
     def assemble_inst(self, inst:tuple[int, str]) -> None:
@@ -459,6 +520,37 @@ class PVcpuAssembler:
         typ = inst[0]
         val = inst[1]
 
+        # Special here
+        if typ == TK_ENDL:
+            self.tok = 1
+            self.line += 1
+            return
+        elif typ == TK_SPECIAL and "@Runlang: " in val:
+            code = ""
+            nxt = self._peek()
+
+            while nxt[0] == TK_SPECIAL and not nxt[1] == "@Runlang-End":
+                nxt = self._advance()
+
+                if not nxt[0] == TK_SPECIAL: break
+                elif nxt[1] == "@Runlang-End": self._advance()
+
+                code += nxt[1]
+            lang = val.split("@Runlang: ")[1].lower()
+            name = f"sp_{self.special_count + 1}_{lang}"
+
+            self.relocs[name] = {
+                "name": name,
+                "at": len(self.sections[".text"]["bytes"]) + 10,
+                "target": name,
+                "type": 64 # REL_64
+            }
+            self._add_data_var_str(name, code, TK_DB, current_sec)
+            self._emit_inst(SPECIAL_INST, 0, 0, 0x0, MEMONLY) # Relocation needed
+            self.special_count += 1
+
+        self.tok += len(val)
+
         if typ == TK_SECTION:
             sec = self._expect(TK_IDENTIFIER, "Expected Section Name,")[1]
             current_sec = sec
@@ -466,16 +558,22 @@ class PVcpuAssembler:
             self.sections[sec] = {
                 "vaddr": align_up(vaddr, self.align),
                 "align": self.align,
-                "flags": 0x0
+                "flags": 0x0,
+                "name": sec,
+                "bytes": bytearray(),
+                "size": 0
             }
             self.last_vaddr = align_up(vaddr, self.align)
+            return
         elif typ == TK_GLOBAL:
             name = self._expect(TK_IDENTIFIER, "Expected Label name,")[1]
             self.entry_label = name
             self._mklabel(name, current_sec, True, False)
+            return
         elif typ == TK_EXTERN:
             name = self._expect(TK_IDENTIFIER, "Expected Label name,")[1]
             self._mklabel(name, current_sec, False, True)
+            return
         elif typ == TK_IDENTIFIER:
             nxt = self._advance()
             if nxt[0] == TK_LABEL:
@@ -489,19 +587,110 @@ class PVcpuAssembler:
                 if not value[0] in [TK_IDENTIFIER]:
                     asm_error("Unknown Assignment value: ", value[1])
 
-                self._add_data_var(val, value[1], nxt[0])
+                self._add_global_var_str(val, value[1], nxt[0])
             else: asm_error("Unknown Instruction: ", val)
+            return
         elif typ == TK_MOV:
+            tok = self._peek()
+            if tok[0] == TK_LBRACKET:
+                data = self._get_bracket_data()
+                self._advance()
+                if data[0] == MEMDIR:
+                    self._emit_inst(MOV, 0, REGS[self._expect(TK_IDENTIFIER, "Expected register name,")[1].lower()], int(data[2][1]), MEMDIR)
+                elif data[0] == MEMREG:
+                    regsrc = self._expect(TK_IDENTIFIER, "Expected Register name,")
+                    reg2 = REGS[regsrc[1].lower()]
+                    reg1 = REGS[data[2][1].lower()]
+                    imm = 0
+                    if data[3][0] == TK_PLUS:
+                        imm = int(data[4][1])
+                    else:
+                        imm = -int(data[4][1])
+                    self._emit_inst(MOV, reg1, reg2, imm, MEMREG)
+                return
+
             reg = self._expect(TK_IDENTIFIER, "Expected register name,")
             self._advance()
-            reg2 = self._expect(TK_IDENTIFIER, "Expected register name,")
-            self._emit_inst(MOV, REGS[reg[1].lower()], REGS[reg2[1].lower()], 0)
+            reg2 = self._peek()
+            if reg2[0] == TK_LBRACKET:
+                data = self._get_bracket_data()
+                if data[0] == MEMDIR:
+                    self._emit_inst(MOV, REGS[reg[1].lower()], 0, int(data[2][1]), MEMDIR)
+                else:
+                    imm = 0
+                    if data[3][0] == TK_PLUS:
+                        imm = int(data[4][1])
+                    else:
+                        imm = int(data[4][1])
+                    self._emit_inst(MOV, REGS[reg[1].lower()], REGS[data[2][1].lower()], imm, MEMREG)
+                return
+            self._advance()
+            val = 0
+            if reg2[1].isdigit(): 
+                val = reg2[1]
+                self._emit_inst(MOV, REGS[reg[1].lower()], 0, val, REGDIR)
+            else: 
+                val = REGS[reg2[1].lower()]
+                self._emit_inst(MOV, REGS[reg[1].lower()], val, 0, REGREG)
+
         elif typ == TK_PUSH:
             reg = self._expect(TK_IDENTIFIER, "Expected register name,")
             self._emit_inst(PUSHI, 0, REGS[reg[1].lower()], 0)
         elif typ == TK_POP:
             reg = self._expect(TK_IDENTIFIER, "Expected register name,")
             self._emit_inst(POPG, REGS[reg[1].lower()], 0, 0)
+        elif typ == TK_SUB:
+            reg = self._expect(TK_IDENTIFIER, "Expected register name,")
+            self._advance() # Consume ','
+            val = self._expect(TK_IDENTIFIER, "Expected Number,")
+
+            if val[1].isdigit():
+                self._emit_inst(SUB, REGS[reg[1].lower()], REGS[reg[1].lower()], int(val[1]))
+            else:
+                self._emit_inst(SUB, REGS[reg[1].lower()], REGS[val[1].lower()], 0)
+        elif typ == TK_ADD:
+            reg = self._expect(TK_IDENTIFIER, "Expected register name,")
+            self._advance()
+            val = self._expect(TK_IDENTIFIER, "Expected Number,")
+
+            if val[1].isdigit():
+                self._emit_inst(ADD, REGS[reg[1].lower()], REGS[reg[1].lower()], int(val[1]))
+            else:
+                self._emit_inst(ADD, REGS[reg[1].lower()], REGS[val[1].lower()], 0)
+        elif typ == TK_IMUL:
+            reg = self._expect(TK_IDENTIFIER, "Expected register name,")
+            self._advance()
+            val = self._expect(TK_IDENTIFIER, "Expected Number,")
+
+            if val[1].isdigit():
+                self._emit_inst(MUL, REGS[reg[1].lower()], REGS[reg[1].lower()], int(val[1]))
+            else:
+                self._emit_inst(MUL, REGS[reg[1].lower()], REGS[val[1].lower()], 0)
+        elif typ == TK_IDIV:
+            reg = self._expect(TK_IDENTIFIER, "Expected register name,")
+
+            self._emit_inst(DIV, REGS["qg0"], REGS[reg[1].lower()], 0, REGREG)
+        elif typ == TK_CQO:
+            self._emit_inst(CQO, 0, 0, 0, NULL)
+        elif typ == TK_XOR:
+            reg = self._expect(TK_IDENTIFIER, "Expected register name,")
+            self._advance()
+            val = self._expect(TK_IDENTIFIER, "Expected Number,")
+
+            if val[1].isdigit():
+                self._emit_inst(XOR, REGS[reg[1].lower()], REGS[reg[1].lower()], int(val[1]))
+            else:
+                self._emit_inst(XOR, REGS[reg[1].lower()], REGS[val[1].lower()], 0)
+        elif typ == TK_SYSCALL:
+            self._emit_inst(INT, 0, 0, 0x80) # inturrupt at 0x80 for syscall
+        else:
+            asm_error("Unknown instruction: '", val, f"' at line: {self.line}, token: {self.tok}")
+
+    def assemble(self) -> None:
+        while True:
+            tok = self._advance()
+            self.assemble_inst(tok)
+        self.build_avef()
 
     # Write AVEF
     def build_avef(self) -> bytes:
@@ -520,6 +709,8 @@ class PVcpuAssembler:
 
         # append each section’s bytes (except .bss)
         body_chunks: List[Tuple[int, bytes]] = []  # (pad, data)
+        text_sec_i = 0
+        i = 0
 
         for name in ordered:
             sec = self.sections[name]
@@ -544,7 +735,11 @@ class PVcpuAssembler:
             file_off = cur_off
             sections_out.append((name.encode("utf-8"), vaddr, file_off, size, flags, align))
             body_chunks.append((pad, data))
+            
+            if name == ".text": text_sec_i = i
+
             cur_off += size
+            i += 1
 
         # compute mem size (round up to page)
         max_needed = 0
@@ -568,6 +763,11 @@ class PVcpuAssembler:
             mem_size,
             b"\x00" * 20
         )
+
+        # Resolve Relocs
+        for reloc in self.relocs:
+            label = self.labels[reloc["target"]]
+            self.sections[text_sec_i]
 
         # section table bytes
         sec_table = bytearray()
