@@ -568,7 +568,7 @@ class PVcpuAssembler:
         elif typ == TK_GLOBAL:
             name = self._expect(TK_IDENTIFIER, "Expected Label name,")[1]
             self.entry_label = name
-            self._mklabel(name, current_sec, True, False)
+            self._mklabel(name, current_sec, True, False, len(name))
             return
         elif typ == TK_EXTERN:
             name = self._expect(TK_IDENTIFIER, "Expected Label name,")[1]
@@ -578,7 +578,7 @@ class PVcpuAssembler:
             nxt = self._advance()
             if nxt[0] == TK_LABEL:
                 # Label
-                self._mklabel(val, current_sec, False, False)
+                self._mklabel(val, current_sec, False, False, len(val))
             elif nxt[0] in [TK_DB, TK_DW, TK_DD, TK_DQ]:
                 if not current_sec == ".data":
                     asm_error("Tried to define data outside of the .data section!")
@@ -767,7 +767,9 @@ class PVcpuAssembler:
         # Resolve Relocs
         for reloc in self.relocs:
             label = self.labels[reloc["target"]]
-            self.sections[text_sec_i]
+            bs = sections_out[text_sec_i]
+            sections_out[text_sec_i] = bs[:reloc["at"]] + (self.sections[label["section"]]["vaddr"] + label["location"]).to_bytes(reloc["mode"], "little", signed=True) + bs[reloc["at"] + reloc["mode"]:]
+            print(sections_out[text_sec_i])
 
         # section table bytes
         sec_table = bytearray()
