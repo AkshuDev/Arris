@@ -18,6 +18,7 @@ def asm_error(*args):
     errorHandler.assemblerError("".join(args))
 
 # Token IDs
+TK_EOF = -1
 TK_ADD = 0
 TK_SUB = 1
 TK_MUL = 2
@@ -114,6 +115,7 @@ ARCH_ID_PVCPU = 0xA0A0   # 16-bit
 # Reserved
 
 # AVEF Section Table Entry:
+# Name
 # Virtual Address
 # File Offset
 # Size
@@ -127,33 +129,35 @@ SECTION_FMT = "<32sQQQII"         # 64 bytes
 SECTION_SIZE = struct.calcsize(SECTION_FMT)
 
 # Section flags
-SEC_R = 1 << 0
-SEC_W = 1 << 1
-SEC_X = 1 << 2
-SEC_D = 1 << 3
+SEC_R = 1 << 0 # Read
+SEC_W = 1 << 1 # Write
+SEC_X = 1 << 2 # Execute
+SEC_D = 1 << 3 # Data
+SEC_META = 1 << 4 # Metadata
+SEC_ALLOC = 1 << 5 # Allocate
 
 DEFAULT_SECTIONS = {
     ".text":  {
-        "vaddr": 0x1000,
-        "flags": SEC_R | SEC_X,
+        "vaddr": 0x0,
+        "flags": SEC_R | SEC_X | SEC_ALLOC,
         "align": 0x10,
         "size": 0
     },
     ".rodata":{
-        "vaddr": 0x1800,
-        "flags": SEC_R,
+        "vaddr": 0x0,
+        "flags": SEC_R | SEC_ALLOC | SEC_D,
         "align": 0x10,
         "size": 0
     },
     ".data":  {
-        "vaddr": 0x2000,
-        "flags": SEC_R | SEC_W | SEC_D,
+        "vaddr": 0x0,
+        "flags": SEC_R | SEC_W | SEC_D | SEC_ALLOC,
         "align": 0x08,
         "size": 0
     },
     ".bss":   {
-        "vaddr": 0x2800,
-        "flags": SEC_R | SEC_W | SEC_D,
+        "vaddr": 0x0,
+        "flags": SEC_R | SEC_W | SEC_D | SEC_ALLOC,
         "align": 0x08,
         "size": 0
     },  # zero-filled
@@ -358,6 +362,11 @@ class PVcpuAssembler:
     def __init__(self, asm: str):
         self.asm = asm
         self.tokens = Lexer(asm).tokenize()
+        
+        if self.tokens[len(self.tokens) - 1][1] == "":
+            self.tokens.pop(len(self.tokens) - 1)
+        self.tokens.append((TK_EOF, ""))
+        
         self.i = 0
         self.n = len(self.tokens)
 
@@ -380,7 +389,6 @@ class PVcpuAssembler:
         self.special_count = 0
         self.entry_label: Optional[str] = None
         self.entry_point: int = 0
-        self.last_vaddr = 0
         self.tok = 1
         self.line = 1
         self.relocs: Dict[str, Dict] = {}
@@ -463,8 +471,28 @@ class PVcpuAssembler:
             "size": size
         }
 
+    def _mksection(self, name:str, vaddr:int, flags:int, align:int) -> None:
+        self.sections[name] = {
+            "vaddr": vaddr,
+            "flags": flags,
+            "align": align,
+            "size": 0,
+            "bytes": bytearray()
+        }
+
+    def _mksection_ifnpresent(self, name:str, vaddr:int, flags:int, align:int) -> None:
+        if self.sections.get(name, None): return
+        self._mksection(name, vaddr, flags, align)
+
+    def _add_reloc(self, name:str, target:str, at:int, type:int) -> None:
+        self.relocs[name] = {
+            "name": name,
+            "target": target,
+            "at": at,
+            "type": type
+        }
+
     def _add_global_var_str(self, name:str, value:str, width:int) -> None:
-        self._emit_bytes(name.encode("utf-8").ljust(64, b"\x00"), 64)
         w = b"\x00"
         if width == TK_DB:
             w = 0x8.to_bytes(2, "little")
@@ -479,8 +507,9 @@ class PVcpuAssembler:
         value = value.encode("utf-8") + b"\x00"
 
         self.vars[name] = len(self.sections[".data"]["bytes"])
-
-        self._emit_imm_le(len(value) * w, 4)
+        self._mksection_ifnpresent(".symbols", 0x0, SEC_META, 0x01) # just metadata, no special alignment needed
+        self.sections[".symbols"]["bytes"].extend(name.encode("utf-8") + b"\x00")
+        self.sections[".symbols"]["bytes"].extend(value)
         self._emit_bytes(value, len(value))
 
     def _add_data_var_str(self, name:str, value:str, width:int, cur_sec:str) -> None:
@@ -515,10 +544,11 @@ class PVcpuAssembler:
     # Assembler singlular instructions
     def assemble_inst(self, inst:tuple[int, str]) -> None:
         current_sec = ".text"
-        vaddr = self.last_vaddr + 1
 
         typ = inst[0]
         val = inst[1]
+        
+        if val == "": return
 
         # Special here
         if typ == TK_ENDL:
@@ -527,10 +557,15 @@ class PVcpuAssembler:
             return
         elif typ == TK_SPECIAL and "@Runlang: " in val:
             code = ""
+            
+            if self._peek()[0] == TK_ENDL: self._advance()
+            
             nxt = self._peek()
 
-            while nxt[0] == TK_SPECIAL and not nxt[1] == "@Runlang-End":
+            while (nxt[0] == TK_SPECIAL or nxt[0] == TK_ENDL) and not nxt[1] == "@Runlang-End":
                 nxt = self._advance()
+                
+                if nxt[0] == TK_ENDL: continue
 
                 if not nxt[0] == TK_SPECIAL: break
                 elif nxt[1] == "@Runlang-End": self._advance()
@@ -538,32 +573,27 @@ class PVcpuAssembler:
                 code += nxt[1]
             lang = val.split("@Runlang: ")[1].lower()
             name = f"sp_{self.special_count + 1}_{lang}"
-
-            self.relocs[name] = {
-                "name": name,
-                "at": len(self.sections[".text"]["bytes"]) + 10,
-                "target": name,
-                "type": 64 # REL_64
-            }
+            self._add_reloc(name, name, len(self.sections[".text"]["bytes"]) + 10, 64)
             self._add_data_var_str(name, code, TK_DB, current_sec)
             self._emit_inst(SPECIAL_INST, 0, 0, 0x0, MEMONLY) # Relocation needed
             self.special_count += 1
+            self.tok += 1
+            return
 
-        self.tok += len(val)
+        self.tok += 1
 
         if typ == TK_SECTION:
             sec = self._expect(TK_IDENTIFIER, "Expected Section Name,")[1]
             current_sec = sec
             self.current_section = sec
             self.sections[sec] = {
-                "vaddr": align_up(vaddr, self.align),
+                "vaddr": 0x0,
                 "align": self.align,
                 "flags": 0x0,
                 "name": sec,
                 "bytes": bytearray(),
                 "size": 0
             }
-            self.last_vaddr = align_up(vaddr, self.align)
             return
         elif typ == TK_GLOBAL:
             name = self._expect(TK_IDENTIFIER, "Expected Label name,")[1]
@@ -686,18 +716,20 @@ class PVcpuAssembler:
         else:
             asm_error("Unknown instruction: '", val, f"' at line: {self.line}, token: {self.tok}")
 
-    def assemble(self) -> None:
+    def assemble(self) -> bytes:
         while True:
             tok = self._advance()
+            
+            if tok[0] == TK_EOF: break
+            
             self.assemble_inst(tok)
-        self.build_avef()
+        return self.build_avef()
 
     # Write AVEF
     def build_avef(self) -> bytes:
         # Assign file offsets after header + section table
         # Sections order: text, rodata, data, bss  (bss has size but no file bytes)
-        ordered = [".text", ".rodata", ".data", ".bss"] + \
-                  [s for s in self.sections.keys() if s not in (".text", ".rodata", ".data", ".bss")]
+        ordered = [".text", ".rodata", ".data", ".bss"] + [s for s in self.sections.keys() if s not in (".text", ".rodata", ".data", ".bss")]
 
         sections_out: List[Tuple[int,int,int,int,int]] = []  # vaddr, file_off, size, flags, align
         blob = bytearray()
@@ -711,10 +743,11 @@ class PVcpuAssembler:
         body_chunks: List[Tuple[int, bytes]] = []  # (pad, data)
         text_sec_i = 0
         i = 0
+        last_vaddr = 0
 
         for name in ordered:
             sec = self.sections[name]
-            vaddr = sec["vaddr"]
+            vaddr = align_up(last_vaddr + 1, sec["align"])
             flags = sec["flags"]
             align = sec["align"]
 
@@ -731,9 +764,21 @@ class PVcpuAssembler:
 
             data = bytes(sec["bytes"])
             size = len(data)
+            
+            last_vaddr += vaddr + size
 
             file_off = cur_off
             sections_out.append((name.encode("utf-8"), vaddr, file_off, size, flags, align))
+            
+            self.sections[name] = {
+                "vaddr": vaddr,
+                "file_offset": file_off,
+                "size": size,
+                "flags": flags,
+                "align": align,
+                "bytes": data
+            }
+            
             body_chunks.append((pad, data))
             
             if name == ".text": text_sec_i = i
@@ -765,11 +810,12 @@ class PVcpuAssembler:
         )
 
         # Resolve Relocs
-        for reloc in self.relocs:
+        for reloc_ in self.relocs:
+            reloc = self.relocs[reloc_]
             label = self.labels[reloc["target"]]
-            bs = sections_out[text_sec_i]
-            sections_out[text_sec_i] = bs[:reloc["at"]] + (self.sections[label["section"]]["vaddr"] + label["location"]).to_bytes(reloc["mode"], "little", signed=True) + bs[reloc["at"] + reloc["mode"]:]
-            print(sections_out[text_sec_i])
+            bs = body_chunks[text_sec_i][1]
+            pad_ = body_chunks[text_sec_i][0]
+            body_chunks[text_sec_i] = (pad_, bs[:reloc["at"]] + (self.sections[label["section"]]["vaddr"] + label["location"]).to_bytes(reloc["type"], "little", signed=True) + bs[reloc["at"] + reloc["type"]:])
 
         # section table bytes
         sec_table = bytearray()

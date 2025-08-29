@@ -27,6 +27,7 @@ compileOut:str = ""
 exitAfterCompile:bool = False
 asmOut:str = ""
 exitAfterAssembling:bool = False
+disassemble:bool = False
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
@@ -55,13 +56,15 @@ if __name__ == "__main__":
                 compileOut = v.split("=")[1]
             elif "--assembled-out" in v and len(v.split("=")) > 1:
                 asmOut = v.split("=")[1]
+            elif v == "-disassemble":
+                disassemble = True
             elif v == "-dump-avef" or v == "-avef-dump":
                 from AVEF import dumper
                 
                 d = b""
                 with open(files[0], "rb") as f:
                     d = f.read()
-                dumper.dump_avef(d)
+                dumper.dump_avef(d, disassemble)
                 exit(0)
             elif v == "-exit-acompile": # Exit after compile
                 exitAfterCompile = True

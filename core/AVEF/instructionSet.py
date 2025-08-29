@@ -9,6 +9,17 @@ MEMONLY = 6 # Memory only
 IMMONLY = 7 # Imm only
 NULL = 0 # NULL
 
+# Debug
+debug_modes = {
+    REGREG: "REGREG",
+    MEMREG: "MEMREG",
+    MEMDIR: "MEMDIR",
+    REGDIR: "REGDIR",
+    MEMONLY: "MEMONLY",
+    IMMONLY: "IMMONLY",
+    NULL: "NULL"
+}
+
 # Core
 HALT = 0
 MOV = 71
@@ -61,6 +72,48 @@ HOST = 60
 INT = 61
 
 SPECIAL_INST = 70
+
+# For debug
+debug_inst = {
+    HALT: "HALT",
+    MOV: "MOV",
+    LEA: "LEA",
+    MOVN: "MOVN",
+    CQO: "CQO",
+    PUSHK: "PUSHK",
+    PUSHB: "PUSHB",
+    PUSHG: "PUSHG",
+    PUSHI: "PUSHI",
+    POPG: "POPG",
+    LOADL: "LOADL",
+    STOREL: "STOREL",
+    ADD: "ADD",
+    SUB: "SUB",
+    MUL: "MUL",
+    DIV: "DIV",
+    AND: "AND",
+    OR: "OR",
+    NOR: "NOR",
+    NOT: "NOT",
+    XOR: "XOR",
+    SHL: "SHL",
+    SHR: "SHR",
+    JMP: "JMP",
+    JMPT: "JMPT",
+    JMPF: "JMPF",
+    CALL: "CALL",
+    RET: "RET",
+    CMP_EQ: "CMP_EQ",
+    CMP_LE: "CMP_LE",
+    CMP_LT: "CMP_LT",
+    CMP_GE: "CMP_GE",
+    CMP_GT: "CMP_GT",
+    CMP_NE: "CMP_NE",
+    HOST: "HOST",
+    INT: "INT",
+    SPECIAL_INST: "SPECIAL_AVEF",
+    NULL: "NULL"
+}
 
 # Registers
 G0 = 62 # Cannot use 0 as it is reserved for NO VALUE
@@ -210,3 +263,11 @@ REGS = {
     "qsp": QSP,
     "qsf": QSF,
 }
+
+# Debug
+debug_regs = {}
+
+for k, v in REGS.items():
+    debug_regs[v] = k
+    
+debug_regs[NULL] = "NULL"
