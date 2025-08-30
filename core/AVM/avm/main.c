@@ -1,5 +1,6 @@
 #include <instset.h>
 #include <avef.h>
+#include <runner.h>
 
 static char* avef_code = NULL;
 static FILE* avef_fd = NULL;
@@ -41,8 +42,14 @@ void check_headers(AVEF_Header* header_) {
     return;
 }
 
+void make_memory(AVEF_State* state, size_t memsize) {
+    state->mem_size = memsize;
+    state->memory = calloc(1, memsize);
+}
+
 int main(int argc, char** argv) {
     int debug = 0;
+    int memsize = 1024*1024; // 1MB
 
     if (argc < 2) {
         perror("Usage: avm [FILE] [-<OPTIONS>]\n");
@@ -54,16 +61,23 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
         if (strncmp(argv[i], "-debug", 6) == 0) {
             debug = 1;
+        } else if (strncmp(argv[i], "-memsize", 8) && argc > i + 1) {
+            memsize = atoi(argv[i + 1]);
+            i++;
         } else {
             file_name = argv[i];
         }
     }
 
     AVEF_Header header;
+    AVEF_State state;
 
     load_file(file_name);
-    check_headers(&header);
-    parse_header(&header);
     close_file();
+    check_headers(&header);
+    make_memory(&state, memsize);
+
+    free(state.memory); // Memory allocated on heap
+
     return 0;
 }

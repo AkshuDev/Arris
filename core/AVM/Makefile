@@ -2,7 +2,7 @@ build := avm_build
 bin := avm_bin
 include := avm
 
-SRCS := $(wildcard *.c)
+SRCS := $(wildcard avm/*.c)
 OBJS := $(SRCS:.c=.o)
 
 CC := gcc
@@ -14,8 +14,8 @@ all: $(TARGET)
 
 $(TARGET): $(SRCS)
 	@echo "Making directories..."
-	@mkdir $(build)
-	@mkdir $(bin)
+	@mkdir -p $(build)
+	@mkdir -p $(bin)
 	@echo "Compiling..."
 	$(CC) $(CFLAGS) $(SRCS) -o $(TARGET)
 	@echo "Done!"
