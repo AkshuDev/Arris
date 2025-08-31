@@ -8,6 +8,7 @@ def dump_avef(data: bytes, debug_code:bool):
     }
 
     # Unpack header
+    print("RAW Header:", data[:Assembler.HEADER_SIZE].hex(" "))
     magic, version, arch, entry, sec_off, nsects, flags, mem_size, reserved = struct.unpack(Assembler.HEADER_FMT, data[:Assembler.HEADER_SIZE])
     print("Magic:", magic.decode())
     print("Version:", hex(version))
@@ -17,19 +18,20 @@ def dump_avef(data: bytes, debug_code:bool):
     print("Section Table Offset:", hex(sec_off))
     print("Number of Sections:", nsects)
     print("Flags:", hex(flags))
-    print("Memory Size (bytes):", mem_size)
+    print("Memory Size (bytes):", hex(mem_size))
 
     # Section table
-    offset = sec_off
+    offset = Assembler.HEADER_SIZE
     for i in range(nsects):
+        print("RAW Entry:", data[offset:offset + Assembler.SECTION_SIZE].hex(" "))
         name, vaddr, file_off, size, flags, align = struct.unpack(Assembler.SECTION_FMT, data[offset:offset + Assembler.SECTION_SIZE])
         print(f"\nSection {i+1}:")
         print("Name:", name.decode("utf-8").strip("\x00"))
-        print("Virtual Address:", vaddr)
-        print("File Offset:", file_off)
-        print("Size:", size)
-        print("Flags:", flags)
-        print("Align:", align)
+        print("Virtual Address:", hex(vaddr))
+        print("File Offset:", hex(file_off))
+        print("Size:", hex(size))
+        print("Flags:", hex(flags))
+        print("Align:", hex(align))
         offset += Assembler.SECTION_SIZE
         
         str_name:str = name.decode("utf-8").strip("\x00")

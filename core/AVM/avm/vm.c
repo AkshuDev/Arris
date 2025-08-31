@@ -10,8 +10,13 @@ int parse_inst(AVEF_State* vm, AVEF_Instruction inst) {
     uint64_t src_val = NULL_;
     uint64_t dest_val = NULL_;
 
-    uint32_t src = inst.src % REG_NUM;
-    uint32_t dest = inst.dest % REG_NUM;
+    uint32_t src = inst.src;
+    uint32_t dest = inst.dest;
+
+    if (src > REG_NUM || dest > REG_NUM) {
+        printf("Value in code, disguised as register, [%d]/[%d] is greater than Register count!\n", src, dest);
+        return 1;
+    }
 
     switch (inst.mode) {
         case REGREG:
@@ -19,23 +24,24 @@ int parse_inst(AVEF_State* vm, AVEF_Instruction inst) {
             break;
         case MEMREG:
             src_val = read_u64(vm, inst.imm) + vm->REGS[src];
-            if (src_val != 0) return 1;
+            if (src_val == -1) return 1;
             break;
         case MEMDIR:
             src_val = read_u64(vm, inst.imm);
-            if (src_val != 0) return 1;
+            if (src_val == -1) return 1;
             break;
         case REGDIR:
             src_val = inst.imm;
             break;
         case MEMONLY:
             src_val = read_u64(vm, inst.imm);
-            if (src_val != 0) return 1;
+            if (src_val == -1) return 1;
             break;
         case IMMONLY:
             src_val = inst.imm;
             break;
         case NULL_:
+            src_val = 0;
             break;
         default:
             printf("Unknown instruction type [%u]!\n", inst.mode);
@@ -51,7 +57,7 @@ int parse_inst(AVEF_State* vm, AVEF_Instruction inst) {
             write_u64(vm, inst.imm, vm->REGS[src]);
             break;
         case LOADL:
-            vm->REGS[dest] = read_u64(vm, inst.imm);
+            vm->REGS[dest] = src_val;
             break;
         case HALT:
             vm->running = 0; // False
@@ -75,15 +81,19 @@ int parse_inst(AVEF_State* vm, AVEF_Instruction inst) {
             if (err) { raise_int(vm, 0x00, &inst); break; } // #DE
             vm->REGS[QG0_REG] = (uint64_t)q; // quotient -> RAX
             vm->REGS[QG3_REG] = (uint64_t)r; // remainder -> RDX
-        case PUSHG:
+        case XOR:
+            vm->REGS[dest] ^= src_val;
+        case PUSHI:
             vm->REGS[QSP_REG] -= 8;
             write_u64(vm, vm->REGS[QSP_REG], vm->REGS[src]);
             break;
         case POPG:
-            vm->REGS[dest] = read_u64(vm, vm->REGS[QSP_REG]);
+            uint64_t val = read_u64(vm, vm->REGS[QSP_REG]);
+            if (val == -1) return 1;
+            vm->REGS[dest] = val;
             vm->REGS[QSP_REG] += 8;
             break;
-        case HOST: // Currently assume python
+        case SPECIAL_INST: // Currently assume python
             run_host_py(vm, src_val);
             break;
         case INT:
@@ -156,17 +166,19 @@ void run_vm(const unsigned char* buf, size_t buf_size, AVEF_State* state, AVEF_H
     }
 
     size_t inst_count = code_sec->size / sizeof(AVEF_Instruction);
-    AVEF_Instruction* insts = (AVEF_Instruction*)(state->memory + code_sec->virtual_addr);
 
-    state->pc = header->entry_point / sizeof(AVEF_Instruction);
+    state->pc = header->entry_point;
     state->running = 1;
 
-    while (state->running && state->pc < inst_count) {
-        AVEF_Instruction inst = insts[state->pc++];
+    while (state->running && state->pc < state->mem_size + 1) {
+        AVEF_Instruction* inst = (AVEF_Instruction*)(state->memory + state->pc);
 
-        int out = parse_inst(state, inst);
+        int out = parse_inst(state, *inst);
         if (out != 0) { // Some error
+            printf("Fault (program dumped)\n");
             return;
         }
+
+        state->pc += sizeof(AVEF_Instruction);
     }
 }

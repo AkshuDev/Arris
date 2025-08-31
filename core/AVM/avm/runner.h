@@ -6,18 +6,18 @@
 #include <instset.h>
 #include <avef.h>
 
-#define REG_NUM 16
+#define REG_NUM 62
 #define QSP_REG 60
 #define QSF_REG 61
 #define QG0_REG 43
 #define QG3_REG 46
 
-#define SEC_R 0
-#define SEC_W 1
-#define SEC_X 2
-#define SEC_D 3
-#define SEC_META 4
-#define SEC_ALLOC 5
+#define SEC_R (1 << 0)
+#define SEC_W (1 << 1)
+#define SEC_X (1 << 2)
+#define SEC_D (1 << 3)
+#define SEC_META (1 << 4)
+#define SEC_ALLOC (1 << 5)
 
 #define REGREG 1
 #define MEMREG 2
@@ -42,7 +42,7 @@ typedef struct AVEF_State {
 static inline uint64_t read_u64(AVEF_State* vm, uint64_t addr) {
     if (addr + 8 > vm->mem_size) {
         printf("Error: Address for reading is greater than memory size!\n");
-        return NULL_;
+        return -1;
     }
     return *(uint64_t*)(vm->memory + addr);
 }

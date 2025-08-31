@@ -36,7 +36,7 @@ _main:
 	mov qG0, qG2
 	cqo
 	idiv qG1
-	mov [qSF + 32], dG0
+	mov [qSF + 32], qG0
 ;;@Runlang: python
 ;;print("My $var: X: 7")
 ;;@Runlang-End

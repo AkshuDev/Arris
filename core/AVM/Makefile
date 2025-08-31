@@ -6,7 +6,7 @@ SRCS := $(wildcard avm/*.c)
 OBJS := $(SRCS:.c=.o)
 
 CC := gcc
-CFLAGS := -I $(include) -w
+CFLAGS := -g -I $(include) -w
 
 TARGET := $(bin)/avm
 
@@ -23,8 +23,8 @@ $(TARGET): $(SRCS)
 
 clean:
 	@echo "Cleaning..."
-	@rmdir $(build)
-	@rmdir $(bin)
+	@rm -rf $(build)
+	@rm -rf $(bin)
 	@echo "Done!"
 
 .PHONY: all clean

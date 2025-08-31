@@ -481,7 +481,7 @@ class PVcpuAssembler:
         }
 
     def _mksection_ifnpresent(self, name:str, vaddr:int, flags:int, align:int) -> None:
-        if self.sections.get(name, None): return
+        if not self.sections.get(name, None) == None: return
         self._mksection(name, vaddr, flags, align)
 
     def _add_reloc(self, name:str, target:str, at:int, type:int) -> None:
@@ -568,12 +568,12 @@ class PVcpuAssembler:
                 if nxt[0] == TK_ENDL: continue
 
                 if not nxt[0] == TK_SPECIAL: break
-                elif nxt[1] == "@Runlang-End": self._advance()
+                elif nxt[1] == "@Runlang-End": break
 
                 code += nxt[1]
             lang = val.split("@Runlang: ")[1].lower()
             name = f"sp_{self.special_count + 1}_{lang}"
-            self._add_reloc(name, name, len(self.sections[".text"]["bytes"]) + 10, 64)
+            self._add_reloc(name, name, len(self.sections[".text"]["bytes"]) + 10, 8)
             self._add_data_var_str(name, code, TK_DB, current_sec)
             self._emit_inst(SPECIAL_INST, 0, 0, 0x0, MEMONLY) # Relocation needed
             self.special_count += 1
@@ -586,14 +586,7 @@ class PVcpuAssembler:
             sec = self._expect(TK_IDENTIFIER, "Expected Section Name,")[1]
             current_sec = sec
             self.current_section = sec
-            self.sections[sec] = {
-                "vaddr": 0x0,
-                "align": self.align,
-                "flags": 0x0,
-                "name": sec,
-                "bytes": bytearray(),
-                "size": 0
-            }
+            self._mksection_ifnpresent(sec, 0x0, 0x0, 0x0);
             return
         elif typ == TK_GLOBAL:
             name = self._expect(TK_IDENTIFIER, "Expected Label name,")[1]
@@ -826,7 +819,7 @@ class PVcpuAssembler:
         out = bytearray()
         out.extend(header)
         out.extend(sec_table)
-
+        
         for pad, data in body_chunks:
             if pad:
                 out.extend(b"\x00" * pad)

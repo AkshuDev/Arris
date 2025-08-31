@@ -74,6 +74,8 @@ if __name__ == "__main__":
                 exitAfterParsing = True
             else:
                 file_ = v
+                if not os.path.exists(file_):
+                    print("File [%s] does not exist!", file_)
                 files.append(file_)
 
         if len(files) == 0:
@@ -143,7 +145,7 @@ if __name__ == "__main__":
         if debug: print("Assembled Code!")
         if asmOut:
             if asmOut == "stdout":
-                print(assembled)
+                print(assembled.hex(" "))
             else:
                 with open(asmOut, "wb") as f:
                     f.write(assembled)

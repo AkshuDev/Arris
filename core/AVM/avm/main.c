@@ -3,6 +3,7 @@
 #include <runner.h>
 
 static char* avef_code = NULL;
+static long avef_size = 0;
 static FILE* avef_fd = NULL;
 
 void load_file(const char* file) {
@@ -21,7 +22,10 @@ void load_file(const char* file) {
     }
     rewind(avef_fd);
 
+    avef_code = malloc(size);
+
     fread(avef_code, size, 1, avef_fd);
+    avef_size = size;
     return 0;
 }
 
@@ -38,7 +42,7 @@ void check_headers(AVEF_Header* header_) {
         exit(4);
     }
 
-    memcpy(header_, avef_code, sizeof(header_));
+    memcpy(header_, avef_code, sizeof(AVEF_Header));
     return;
 }
 
@@ -77,7 +81,10 @@ int main(int argc, char** argv) {
     check_headers(&header);
     make_memory(&state, memsize);
 
+    run_vm(avef_code, avef_size, &state, &header);
+
     free(state.memory); // Memory allocated on heap
+    free(avef_code);
 
     return 0;
 }
