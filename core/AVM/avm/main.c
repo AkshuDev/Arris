@@ -10,6 +10,7 @@ void load_file(const char* file) {
     avef_fd = fopen(file, "rb");
     if (!avef_fd) {
         perror("Could not open AVEF file!\n");
+        printf("PATH: %s\n", file);
         exit(1);
     }
 
@@ -65,7 +66,7 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
         if (strncmp(argv[i], "-debug", 6) == 0) {
             debug = 1;
-        } else if (strncmp(argv[i], "-memsize", 8) && argc > i + 1) {
+        } else if (strncmp(argv[i], "-memsize", 8) == 0 && argc > i + 1) {
             memsize = atoi(argv[i + 1]);
             i++;
         } else {

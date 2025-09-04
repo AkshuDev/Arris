@@ -5,8 +5,8 @@ REGREG = 1 # Register into/to Register
 MEMREG = 2 # Memory + Register1 value into/to Register2
 MEMDIR = 3 # Memory into/to Register
 REGDIR = 4 # Imm into/to Register
-MEMONLY = 6 # Memory only
-IMMONLY = 7 # Imm only
+MEMONLY = 5 # Memory only
+IMMONLY = 6 # Imm only
 NULL = 0 # NULL
 
 # Debug

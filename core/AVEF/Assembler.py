@@ -705,7 +705,7 @@ class PVcpuAssembler:
             else:
                 self._emit_inst(XOR, REGS[reg[1].lower()], REGS[val[1].lower()], 0)
         elif typ == TK_SYSCALL:
-            self._emit_inst(INT, 0, 0, 0x80) # inturrupt at 0x80 for syscall
+            self._emit_inst(INT, 0, 0, 0x80, IMMONLY) # inturrupt at 0x80 for syscall
         else:
             asm_error("Unknown instruction: '", val, f"' at line: {self.line}, token: {self.tok}")
 

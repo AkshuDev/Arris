@@ -50,6 +50,8 @@ TOK_UINT = "UINT"
 TOK_CHAR = "CHAR"
 TOK_BOOL = "BOOL"
 TOK_LONG = "LONG"
+# Special
+TOK_COMMA = "COMMA"
 
 def toBool(val:bool) -> int:
     if val == True: return 1
@@ -238,6 +240,10 @@ class Lexer():
                     self.advance()
                     continue
                 self.makeToken(TOK_ENDL, c)
+                self.advance()
+                continue
+            elif c == ",":
+                self.makeToken(TOK_COMMA)
                 self.advance()
                 continue
             elif c in " \t":

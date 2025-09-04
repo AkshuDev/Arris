@@ -23,7 +23,7 @@ int parse_inst(AVEF_State* vm, AVEF_Instruction inst) {
             src_val = vm->REGS[src];
             break;
         case MEMREG:
-            src_val = read_u64(vm, inst.imm) + vm->REGS[src];
+            src_val = vm->REGS[src] + inst.imm;
             if (src_val == -1) return 1;
             break;
         case MEMDIR:
@@ -94,7 +94,11 @@ int parse_inst(AVEF_State* vm, AVEF_Instruction inst) {
             vm->REGS[QSP_REG] += 8;
             break;
         case SPECIAL_INST: // Currently assume python
-            run_host_py(vm, src_val);
+            char* code = get_string(vm, inst.imm);
+            if (code == NULL) {
+                return 1;
+            }
+            run_host_py(vm, code); // Always and Always MODE MEMONLY
             break;
         case INT:
             uint16_t no_ = (uint16_t)(src_val & 0xFFFFu);
@@ -143,7 +147,7 @@ void run_vm(const unsigned char* buf, size_t buf_size, AVEF_State* state, AVEF_H
                 return;
             }
         } else {
-            memcpy(state->memory + sec->virtual_addr, 0, sec->size);
+            memset(state->memory + sec->virtual_addr, 0, sec->size);
         }
     }
 

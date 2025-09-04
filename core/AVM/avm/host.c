@@ -5,15 +5,9 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <inttypes.h>
 
-void run_host_py(AVEF_State* state, uint64_t addr) {
-    if (addr > state->mem_size) {
-        printf("WARNING [HOST]: Wrong address!\n");
-        return;
-    }
-
-    char* code = (char*)(state->memory + addr);
-
+void run_host_py(AVEF_State* state, char* code) {
     FILE* f = fopen("tmp_host.py", "w");
     if (!f) {
         printf("WARNING [HOST]: Unable to create TEMP file!\n");

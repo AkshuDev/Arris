@@ -9,14 +9,11 @@ import compiler
 
 from AVEF import Assembler, instructionSet
 
-from phardwareitk.Memory import Memory # My Own but it has something very important MEMORY!
-
 file_:str = None
 code:str = None
 debug:bool = False
 compile_:bool = False
-memsize:int = 512
-memory:Memory.Memory = None
+memsize:int = 1024 * 1024 # 1MB
 onlylex:bool = False
 lexout:bool = False
 parseout:bool = False
@@ -28,6 +25,12 @@ exitAfterCompile:bool = False
 asmOut:str = ""
 exitAfterAssembling:bool = False
 disassemble:bool = False
+assembled_output_dir_def:str = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../temp")
+assembled_output_def:str = os.path.join(assembled_output_dir_def, "aout.avef")
+
+avm_dir_path:str = os.path.join(os.path.dirname(os.path.abspath(__file__)), "AVM")
+avm_bin_path:str = os.path.join(avm_dir_path, "avm_bin")
+avm_path:str = os.path.join(avm_bin_path, "avm")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
@@ -77,6 +80,8 @@ if __name__ == "__main__":
                 if not os.path.exists(file_):
                     print("File [%s] does not exist!", file_)
                 files.append(file_)
+                
+        if debug: print("MEMSIZE:", memsize, "bytes")
 
         if len(files) == 0:
             print("Usage: [PROGRAM] <input_files> [-<OPTIONS>]")
@@ -92,10 +97,6 @@ if __name__ == "__main__":
             lex = lexer.Lexer(code)
             print("Tokens:\n", lex.tokenize())
             exit(0)
-
-        if debug: print("Creating memory space of size:", memsize, "bytes")
-        memory = Memory.Memory(memsize, 0, None, debug, 0) # No system size with no memory blocks and no process size. Just enough size for our program
-        # We can use the Process class for full Virtual Process style but I would like to make this one custom.
         
         if debug: print("Getting code...")
         with open(files[0], "r") as f:
@@ -151,3 +152,38 @@ if __name__ == "__main__":
                     f.write(assembled)
         
         if (exitAfterAssembling): exit(0)
+        
+        if debug: print("Running AVM (Arris Virtual Machine)...")
+        if not os.path.exists(avm_path):
+            print("AVM doesn't exist trying, checking for Makefile...")
+            if not os.path.exists(os.path.join(avm_dir_path, "Makefile")):
+                print("No Makefile found, please install AVM from github repository (https://github.com/AkshuDev/Arris)")
+                exit(1)
+            ret = os.system(f"make -C \"{avm_dir_path}\"")
+            if not ret == 0:
+                print("Makefile Failed!, please install AVM from github repository (https://github.com/AkshuDev/Arris)")
+                exit(1)
+            if not os.path.exists(avm_path): 
+                print("Failed to make AVM, please install AVM from github repository (https://github.com/AkshuDev/Arris)")
+        
+        memprovided = str(memsize)
+        debugprovided = ""
+        if debug: debugprovided = "-debug"
+        
+        if asmOut == "":
+            os.mkdir(assembled_output_dir_def)
+            with open(assembled_output_def, "wb") as f:
+                f.write(assembled)
+            
+            if debug: print("Command:", f"{avm_path} {assembled_output_def} -memsize {memprovided} {debugprovided}")
+        
+            os.system(f"{avm_path} {assembled_output_def} -memsize {memprovided} {debugprovided}")
+            os.remove(assembled_output_def)
+            os.rmdir(assembled_output_dir_def)
+        else:
+            if debug: print("Command:", f"{avm_path} {asmOut} -memsize {memprovided} {debugprovided}")
+            os.system(f"{avm_path} {asmOut} -memsize {memprovided} {debugprovided}")
+            
+        if debug: print("Finished Running AVM!")
+            
+        exit(0)

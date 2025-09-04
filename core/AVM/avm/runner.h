@@ -42,6 +42,7 @@ typedef struct AVEF_State {
 static inline uint64_t read_u64(AVEF_State* vm, uint64_t addr) {
     if (addr + 8 > vm->mem_size) {
         printf("Error: Address for reading is greater than memory size!\n");
+        vm->running = 0;
         return -1;
     }
     return *(uint64_t*)(vm->memory + addr);
@@ -50,13 +51,42 @@ static inline uint64_t read_u64(AVEF_State* vm, uint64_t addr) {
 static inline int write_u64(AVEF_State* vm, uint64_t addr, uint64_t val) {
     if (addr + 8 > vm->mem_size) {
         printf("Error: Address for writing is greater than memory size!\n");
+        vm->running = 0;
         return 1;
     }
     *(uint64_t*)(vm->memory + addr) = val;
     return 0;
 }
 
+static inline char* get_string(AVEF_State* vm, uint64_t addr) {
+    if (addr >= vm->mem_size) {
+        printf("Error: Trying to access string outside memory range!\n");
+        vm->running = 0;
+        return NULL;
+    }
+
+    // Scan until '\0' or end of memory
+    uint64_t i = addr;
+    while (i < vm->mem_size && vm->memory[i] != '\0') {
+        i++;
+    }
+
+    if (i == vm->mem_size) {
+        printf("Error: Unterminated string in memory!\n");
+        vm->running = 0;
+        return NULL;
+    }
+
+    return (const char*)(vm->memory + addr);
+}
+
 static inline int raise_int(AVEF_State* vm, uint16_t int_no, const AVEF_Instruction* inst) {
+    if (int_no > 256) {
+        printf("Interrupt value too great! 0x%02X\n", int_no);
+        vm->running = 0;
+        return 1;
+    }
+
     IntHandler h = vm->int_handlers[int_no];
     if (h) {h(vm, int_no, inst);}
     else {

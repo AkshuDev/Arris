@@ -65,6 +65,31 @@ class VarDecl(Expr):
     def __repr__(self):
         return f"VarDecl(type={self.var_type}, name={self.name}, value={self.value})"
 
+class Param(Expr):
+    def __init__(self, var_type: str, name: str, ptr: bool = False):
+        self.var_type = var_type
+        self.name = name
+        self.ptr = ptr
+        self.len = 0  # like VarDecl, compute bit length later
+    def __repr__(self):
+        return f"Param(type={self.var_type}, name={self.name}, ptr={self.ptr})"
+
+class FuncDecl(Expr):
+    def __init__(self, ret_type: str, name: str, params: List[Param], body: List[Expr]):
+        self.ret_type = ret_type
+        self.name = name
+        self.params = params
+        self.body = body
+    def __repr__(self):
+        return f"FuncDecl(ret={self.ret_type}, name={self.name}, params={self.params}, body={self.body})"
+
+class FuncCall(Expr):
+    def __init__(self, name: str, args: List[Expr]):
+        self.name = name
+        self.args = args
+    def __repr__(self):
+        return f"FuncCall(name={self.name}, args={self.args})"
+
 class BinaryOp(Expr):
     def __init__(self, left: Expr, op: str, right: Expr):
         self.left, self.op, self.right = left, op, right
@@ -100,6 +125,9 @@ class Parser:
         if tok[0] != typ:
             errorHandler.error(f"Expected {typ}, got {tok}")
         return tok
+    
+    def inject_tokens(self, new_tokens: List[Tuple[str, str]]) -> None:
+        self.tokens = self.tokens[:self.pos] + new_tokens + self.tokens[self.pos:]
 
     # === Expression Parsing ===
     def parse_expr(self, prec=0) -> Expr:
@@ -129,6 +157,21 @@ class Parser:
                 self.advance()
                 expr = self.parse_expr()
                 return Assignment(val, expr)
+            elif self.peek()[0] == TOK_LPAR:
+                # func call
+                self.advance() # consume '('
+                args = []
+                if self.peek()[0] != TOK_RPAR:
+                    while True:
+                        arg = self.parse_expr()
+                        args.append(arg)
+                        if self.peek()[0] == TOK_COMMA:
+                            self.advance()
+                        else:
+                            break
+                
+                self.expect(TOK_RPAR)
+                return FuncCall(val, args)
             return Var(val)
         elif typ == TOK_LPAR:
             expr = self.parse_expr()
@@ -144,6 +187,28 @@ class Parser:
             TOK_MUL: 20, TOK_DIV: 20,
         }
         return prec_table.get(op, -1)
+    
+    # === Including ===
+    def parse_include(self) -> None:
+        self.advance() # consume "@include"
+        typ, filename = self.expect(TOK_LIT_STRING)
+        code = ""
+        
+        # read file
+        try:
+            with open(filename, "r") as f:
+                code = f.read()
+        except FileNotFoundError:
+            errorHandler.error(f"Included file is not found: {filename}")
+        
+        # lex included file
+        included_tokens = Lexer(code).tokenize()
+        
+        if included_tokens and included_tokens[-1][0] == TOK_EOF:
+            included_tokens = included_tokens[:-1]
+        
+        self.inject_tokens(included_tokens)
+        return None
     
     # === Running another Language ===
     def parse_runlang(self) -> RunLang:
@@ -176,10 +241,60 @@ class Parser:
         self.expect(TOK_CODE_BLOCK_CLOSE)
         return RunLang(lang, code, vars_list)
 
+    # === Functions ===
+    def parse_func(self) -> FuncDecl:
+        self.advance() # Consume 'func'
+        # return type
+        ret_type_tok = self.advance()
+        if ret_type_tok[0] not in [TOK_INT, TOK_UINT, TOK_CHAR, TOK_BOOL, TOK_VOID, TOK_BYTE, TOK_DWORD, TOK_WORD, TOK_QWORD, TOK_LONG]:
+            errorHandler.error(f"Expected return type, got {ret_type_tok[1]}")
+        ret_type = ret_type_tok[0]
+        
+        # func name
+        name = self.expect(TOK_IDENTIFIER)[1]
+        # params
+        self.expect(TOK_LPAR)
+        params = []
+        while self.peek()[0] != TOK_RPAR:
+            # type
+            type_tok = self.advance()
+            if type_tok[0] not in [TOK_INT, TOK_UINT, TOK_CHAR, TOK_BOOL, TOK_VOID, TOK_BYTE, TOK_DWORD, TOK_WORD, TOK_QWORD, TOK_LONG]:
+                errorHandler.error(f"Expected param type, got {type_tok[1]}")
+            var_type = type_tok[0]
+            ptr = False
+            if self.peek()[0] == TOK_MUL:
+                ptr = True
+                self.advance()
+            
+            # name
+            param_name = self.expect(TOK_IDENTIFIER)[1]
+            params.append(Param(var_type, param_name, ptr))
+            
+            if self.peek()[0] == TOK_COMMA:
+                self.advance() # consume comma
+        
+        self.expect(TOK_RPAR)
+        self.expect(TOK_CODE_BLOCK_OPEN)
+        body = []
+        while self.peek()[0] != TOK_CODE_BLOCK_CLOSE and self.peek()[0] != TOK_EOF:
+            stmt = self.parse_stmt()
+            if stmt is not None:
+                body.append(stmt)
+            if self.peek()[0] == TOK_ENDL:
+                self.advance()
+        self.expect(TOK_CODE_BLOCK_CLOSE)
+        
+        return FuncDecl(ret_type, name, params, body)
+
     # === Statements ===
     def parse_stmt(self) -> Expr:
         typ, val = self.peek()
         glb = False
+        
+        if typ == TOK_ENDL: return None
+        
+        if typ == TOK_IDENTIFIER and val == "@include":
+            return self.parse_include()
 
         if typ == TOK_GLOBAL:
             glb = True
@@ -212,6 +327,9 @@ class Parser:
 
             return VarDecl(var_type, name, None, glb, ptr)
 
+        elif typ == TOK_FUNCDEF:
+            return self.parse_func()
+
         elif typ == TOK_RETURN:
             self.advance()
             if self.peek()[0] in [TOK_ENDL, TOK_EOF]:
@@ -229,7 +347,8 @@ class Parser:
         stmts = []
         while self.peek()[0] != TOK_EOF:
             stmt = self.parse_stmt()
-            stmts.append(stmt)
+            if stmt:
+                stmts.append(stmt)
             if self.peek()[0] == TOK_ENDL:
                 self.advance()
         return stmts

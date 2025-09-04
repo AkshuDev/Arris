@@ -1,5 +1,3 @@
-@import once
-
 func void print_stdout(char* v) {
     __py__: {
         "print('$')" v
