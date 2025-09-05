@@ -170,8 +170,16 @@ class Lexer():
             self.makeToken(TOK_RETURN, s)
         elif s == "@inc":
             self.makeToken(TOK_INC, s)
+        elif s == "__py_simple__:":
+            self.makeToken(TOK_RUNLANG, "python-simple")
         elif s == "__py__:":
             self.makeToken(TOK_RUNLANG, "python")
+        elif s == "__c__":
+            self.makeToken(TOK_RUNLANG, "c")
+        elif s == "__cpp__":
+            self.makeToken(TOK_RUNLANG, "c++")
+        elif s == "__vasm__":
+            self.makeToken(TOK_RUNLANG, "vasm")
         elif s == "func":
             self.makeToken(TOK_FUNCDEF, s)
         elif s == "void":

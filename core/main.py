@@ -47,11 +47,11 @@ if __name__ == "__main__":
                 compile_ = True
             elif "--memory" in v and len(v.split("=")) > 1:
                 memsize = helpers.ToInt(v.split("=")[1])
-            elif v == "-onlylex":
+            elif v == "-exit-alex":
                 onlylex = True
-            elif v == "-lexout":
+            elif v == "-lex-out":
                 lexout = True
-            elif v == "-parseout":
+            elif v == "-parse-out":
                 parseout = True
             elif v == "--bits" and len(v.split("=")) > 1:
                 compileMode = helpers.ToInt(v.split("=")[1])

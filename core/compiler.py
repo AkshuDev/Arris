@@ -58,6 +58,35 @@ def formatString(string:str, vars:list, local_vars:dict=None, global_vars:dict=N
 
     return res
 
+def formatCode(code:str, vars:list, local_vars:dict=None, global_vars:dict=None) -> str:
+    i = 0
+    res = ""
+    bslash = False
+    
+    for c in code:
+        if c == "\\":
+            bslash = True
+            continue
+        
+        if bslash and c == "$":
+            var = vars[i]
+            typ = var[0]
+            val = var[1]
+            
+            if local_vars.get(val, None):
+                res += f"mov qG14, {local_vars[val][""]}"
+            elif global_vars.get(val, None):
+                res += f"mov qG14, {val}"
+            else:
+                errorHandler.compilerError(f"Unknown variable: {val}")
+                exit(1)
+        
+        if bslash:
+            bslash = False
+        
+        res += c
+        i += 1
+
 class ArrisCompiler64(): # Outputs NASM syntax but follows PVCpu registers (64-bit)
     def __init__(self, ast:list):
         self.ast:list = ast
@@ -232,10 +261,17 @@ class ArrisCompiler64(): # Outputs NASM syntax but follows PVCpu registers (64-b
             self.text.append(f"\tmov qG0, {SYS_EXIT}")
             self.text.append("\tsyscall")
         elif isinstance(s, parser.RunLang):
-            self.text.append(f";;@Runlang: {s.language}")
-            code = formatString(s.code, s.vars, self.local_vars_value, self.global_vars_value)
-            self.text.append(f";;{code}")
-            self.text.append(f";;@Runlang-End")
+            if s.language == "python-simple":
+                self.text.append(f";;@Runlang: {s.language}")
+                code = formatString(s.code, s.vars, self.local_vars_value, self.global_vars_value)
+                self.text.append(f";;{code}")
+                self.text.append(f";;@Runlang-End")
+            elif s.language == "vasm":
+                self.text.append("; VASM Runlang")
+                new_code = formatCode(s.code)
+            else:
+                self.text.append(f"")
+                self.text.append(f"call runlang_{s.language}")
         else:
             self.compile_expr(s)
     
