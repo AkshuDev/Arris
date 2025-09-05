@@ -706,6 +706,12 @@ class PVcpuAssembler:
                 self._emit_inst(XOR, REGS[reg[1].lower()], REGS[val[1].lower()], 0)
         elif typ == TK_SYSCALL:
             self._emit_inst(INT, 0, 0, 0x80, IMMONLY) # inturrupt at 0x80 for syscall
+        elif typ == TK_CALL:
+            label = self._expect(TK_IDENTIFIER, "Expected label,")
+            if not self.labels.get(label, None):
+                print(f"Unknown label [{label}]!")
+                exit(1)
+            self._add_reloc(label, label, )
         else:
             asm_error("Unknown instruction: '", val, f"' at line: {self.line}, token: {self.tok}")
 
