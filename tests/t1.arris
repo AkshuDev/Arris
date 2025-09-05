@@ -1,3 +1,5 @@
 @include "stdlib/stdio.alib"
 
-print_stdout("Hi")
+func int main() {
+    print_stdout("hi")
+}

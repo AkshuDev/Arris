@@ -1,7 +1,4 @@
-# This file is made by AkshuDev!
-# I really need to learn how to add comments
-# I remade the whole Parser again because why not
-
+import os
 from typing import List, Tuple, Optional
 import errorHandler
 from lexer import *
@@ -70,7 +67,20 @@ class Param(Expr):
         self.var_type = var_type
         self.name = name
         self.ptr = ptr
-        self.len = 0  # like VarDecl, compute bit length later
+        self.len = 0
+        if self.var_type == TOK_CHAR or self.var_type == TOK_BYTE:
+            self.len = 8
+        elif self.var_type == TOK_WORD:
+            self.len = 16
+        elif (self.var_type == TOK_INT or self.var_type == TOK_UINT) or self.var_type == TOK_DWORD:
+            self.len = 32
+        elif self.var_type == TOK_QWORD or self.var_type == TOK_LONG:
+            self.len = 64
+        else:
+            errorHandler.error(f"Unkown variable type: {self.var_type} with value: {self.value}")
+
+        if self.ptr:
+            self.len = ptr_len()
     def __repr__(self):
         return f"Param(type={self.var_type}, name={self.name}, ptr={self.ptr})"
 
@@ -106,9 +116,17 @@ class ReturnStmt(Expr):
 
 # === Parser ===
 class Parser:
-    def __init__(self, tokens: List[Tuple[str,str]]):
+    def __init__(self, tokens: List[Tuple[str,str]], include_runlang=True):
         self.tokens = tokens
         self.pos = 0
+        if include_runlang:
+            code = ""
+            with open (os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "stdlib", "runlang.alib"), "r") as f:
+                code = f.read()
+            tokens = Lexer(code).tokenize()
+            if tokens[-1][0] == TOK_EOF:
+                tokens = tokens[:-1]
+            self.inject_tokens(tokens)
 
     def peek(self) -> Tuple[str,str]:
         if self.pos < len(self.tokens):
@@ -283,6 +301,9 @@ class Parser:
             if self.peek()[0] == TOK_ENDL:
                 self.advance()
         self.expect(TOK_CODE_BLOCK_CLOSE)
+        
+        if not isinstance(body[-1], ReturnStmt):
+            body.append(ReturnStmt(None))
         
         return FuncDecl(ret_type, name, params, body)
 

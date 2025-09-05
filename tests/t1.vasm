@@ -1,47 +1,67 @@
 section .data
 section .bss
 section .rodata
+str0: db 104, 105, 0
 section .text
-global _main
-_main:
+global __main
+__main:
+	pop qG1
+	mov qG2, qSP
 	push qSF
 	mov qSF, qSP
-	sub qSF, 32
-	mov qG0, 1
-	push qG0
-	mov qG0, 2
-	push qG0
-	mov qG0, 3
-	mov qG1, qG0
-	pop qG2
-	imul qG2, qG1
-	mov qG0, qG2
-	mov qG1, qG0
-	pop qG2
-	add qG2, qG1
-	mov qG0, qG2
-	mov [qSF + 0], dG0
-	sub qSF, 32
-	mov dG0, [qSF + 0]
-	push qG0
-	mov qG0, 4
-	mov qG1, qG0
-	pop qG2
-	add qG2, qG1
-	mov qG0, qG2
-	push qG0
-	mov qG0, 2
-	mov qG1, qG0
-	pop qG2
-	mov qG0, qG2
-	cqo
-	idiv qG1
-	mov [qSF + 32], qG0
-;;@Runlang: python
-;;print("My $var: X: 7")
-;;@Runlang-End
+	call main
 	mov qSP, qSF
 	pop qSF
+	mov qG1, qG0
 	mov qG0, 0
-	xor qG1, qG1
 	syscall
+	mov qG0, 0
+	mov qSP, qSF
+	pop qSF
+	ret
+runlang_python:
+	push qSF
+	mov qSF, qSP
+	sub qSF, 64
+	mov [qSF + 64], qG1
+;;@Runlang: python-simple
+;;
+;;@Runlang-End
+	mov qG0, 0
+	mov qSP, qSF
+	pop qSF
+	ret
+print_stdout:
+	push qSF
+	mov qSF, qSP
+	sub qSF, 64
+	mov [qSF + 64], qG1
+	mov qG1, [qSP + 1]
+
+	push 'p'
+	push 'r'
+	push 'i'
+	push 'n'
+	push 't'
+	push '('
+	push '''
+	push '$'
+	push '''
+	push ')'
+	push 0
+
+	call runlang_python
+	mov qG0, 0
+	mov qSP, qSF
+	pop qSF
+	ret
+main:
+	push qSF
+	mov qSF, qSP
+	lea qG0, [str0]
+	mov qG1, str0
+	call print_stdout
+	mov qG0, 0
+	mov qSP, qSF
+	pop qSF
+	ret

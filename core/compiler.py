@@ -19,7 +19,7 @@ NULL = "0" # in string for easy use
 # Arg 1-5: g1-g5
 # Registers used for Arthmetic: g0, g1, g2
 
-def formatString(string:str, vars:list, local_vars:dict=None, global_vars:dict=None) -> str:
+def formatString(string:str, vars:list, local_vars:dict=None, global_vars:dict=None, curfunc:str="__main") -> str:
     i = 0
     res = ""
     bslash = False
@@ -40,8 +40,8 @@ def formatString(string:str, vars:list, local_vars:dict=None, global_vars:dict=N
                 res += val
             elif typ == lexer.TOK_IDENTIFIER:
                 if local_vars:
-                    if val in local_vars:
-                        val = local_vars[val]
+                    if curfunc in local_vars and val in local_vars[curfunc]:
+                        val = local_vars[curfunc][val]
                         res += str(val)
                     elif val in global_vars:
                         val = global_vars[val]
@@ -58,7 +58,7 @@ def formatString(string:str, vars:list, local_vars:dict=None, global_vars:dict=N
 
     return res
 
-def formatCode(code:str, vars:list, local_vars:dict=None, global_vars:dict=None) -> str:
+def formatCode(code:str, vars:list, local_vars:dict=None, global_vars:dict=None, curfunc:str="__main") -> str:
     i = 0
     res = ""
     bslash = False
@@ -73,10 +73,18 @@ def formatCode(code:str, vars:list, local_vars:dict=None, global_vars:dict=None)
             typ = var[0]
             val = var[1]
             
-            if local_vars.get(val, None):
-                res += f"mov qG14, {local_vars[val][""]}"
-            elif global_vars.get(val, None):
-                res += f"mov qG14, {val}"
+            if curfunc in local_vars and val in local_vars[curfunc]:
+                res += f"\tmov qG14, [qSF + {local_vars[val][0]}]\n"
+                res += f"\tpush qG14\n"
+                i += 1
+                bslash = False
+                continue
+            elif val in global_vars:
+                res += f"\tmov qG14, [{val}]\n"
+                res += f"\tpush qG14\n"
+                i += 1
+                bslash = False
+                continue
             else:
                 errorHandler.compilerError(f"Unknown variable: {val}")
                 exit(1)
@@ -84,8 +92,10 @@ def formatCode(code:str, vars:list, local_vars:dict=None, global_vars:dict=None)
         if bslash:
             bslash = False
         
-        res += c
-        i += 1
+        res += f"\tpush '{c}'\n"
+
+    res += "\tpush 0\n"
+    return res
 
 class ArrisCompiler64(): # Outputs NASM syntax but follows PVCpu registers (64-bit)
     def __init__(self, ast:list):
@@ -95,6 +105,7 @@ class ArrisCompiler64(): # Outputs NASM syntax but follows PVCpu registers (64-b
         self.bss:list = []
         self.rodata:list = []
         self.text:list = []
+        self.cur_func:str = "__main"
         self.strings:dict = {}
         self.label_count:int = 0
         self.global_vars:dict = {}
@@ -150,9 +161,9 @@ class ArrisCompiler64(): # Outputs NASM syntax but follows PVCpu registers (64-b
                 self.text.append(f"\tmov {type_}G0, [{e.name}]")
                 return self.global_vars_value[e.name]
             else:
-                if e.name in self.local_vars:
+                if self.cur_func in self.local_vars and e.name in self.local_vars[self.cur_func]:
                     type_ = "q"
-                    len_ = self.local_vars[e.name][1]
+                    len_ = self.local_vars[self.cur_func][e.name][1]
 
                     if len_ == 8 or len_ == 1:
                         type_ = "b"
@@ -165,8 +176,8 @@ class ArrisCompiler64(): # Outputs NASM syntax but follows PVCpu registers (64-b
                     else:
                         errorHandler.compilerError(f"Invalid length of variable: {e.name}")
 
-                    self.text.append(f"\tmov {type_}G0, [qSF + {self.local_vars[e.name][0]}]")
-                    return self.local_vars_value[e.name]
+                    self.text.append(f"\tmov {type_}G0, [qSF + {self.local_vars[self.cur_func][e.name][0]}]")
+                    return self.local_vars_value[self.cur_func][e.name]
                 else:
                     errorHandler.compilerError(f"Unknown variable: {e.name}")
         elif isinstance(e, parser.BinaryOp):
@@ -194,13 +205,14 @@ class ArrisCompiler64(): # Outputs NASM syntax but follows PVCpu registers (64-b
             return res
         elif isinstance(e, parser.Assignment):
             value = self.compile_expr(e.value)
+            
             if e.name in self.global_vars:
                 self.text.append(f"\tmov [{e.name}], qG0")
                 self.global_vars_value[e.name] = value
             else:
-                if e.name in self.local_vars:
+                if self.cur_func in self.local_vars and e.name in self.local_vars[self.cur_func]:
                     type_ = "q" # 64-bits
-                    len_ = self.local_vars[e.name][1]
+                    len_ = self.local_vars[self.cur_func][e.name][1]
 
                     if len_ == 8 or len_ == 1:
                         type_ = "b"
@@ -213,11 +225,20 @@ class ArrisCompiler64(): # Outputs NASM syntax but follows PVCpu registers (64-b
                     else:
                         errorHandler.compilerError(f"Invalid size of variable: {e.name}")
 
-                    self.text.append(f"\tmov [qSF + {self.local_vars[e.name][0]}], {type_}G0")
-                    self.local_vars_value[e.name] = value
+                    self.text.append(f"\tmov [qSF + {self.local_vars[self.cur_func][e.name][0]}], {type_}G0")
+                    self.local_vars_value[self.cur_func][e.name] = value
                 else:
                     errorHandler.compilerError(f"No such variable: {e.name}", 2)
-        
+        elif isinstance(e, parser.FuncCall):
+            if e.args:
+                i = 1
+                for arg in e.args:
+                    val = self.compile_expr(arg)
+                    self.text.append(f"\tmov qG{i}, {val}")
+                    i += 1
+            self.text.append(f"\tcall {e.name}")
+            return e.name
+                
     def compile_stmt(self, s):
         if isinstance(s, parser.VarDecl):
             if s.name not in self.global_vars and s.global_ == True:
@@ -245,21 +266,15 @@ class ArrisCompiler64(): # Outputs NASM syntax but follows PVCpu registers (64-b
                     pass # As it means nothing
                 elif (s.var_type == lexer.TOK_BIT or s.var_type == lexer.TOK_BOOL) and not s.ptr:
                     self.text.append(f"\tsub qSF, 8") # Minimum is 8 bits
-                    self.local_vars[s.name] = (self.current_offset_from_sf, 8)
+                    self.local_vars[self.cur_func][s.name] = (self.current_offset_from_sf, 8)
                     self.current_offset_from_sf += 8
                 else:
                     self.text.append(f"\tsub qSF, {s.len}")
-                    self.local_vars[s.name] = (self.current_offset_from_sf, s.len)
+                    self.local_vars[self.cur_func][s.name] = (self.current_offset_from_sf, s.len)
                     self.current_offset_from_sf += s.len
 
             if s.value:
                 self.compile_expr(parser.Assignment(s.name, s.value))
-        elif isinstance(s, parser.ReturnStmt):
-            if s.value:
-                self.compile_expr(s.value)
-            self.text.append("\tmov qG1, qG0")
-            self.text.append(f"\tmov qG0, {SYS_EXIT}")
-            self.text.append("\tsyscall")
         elif isinstance(s, parser.RunLang):
             if s.language == "python-simple":
                 self.text.append(f";;@Runlang: {s.language}")
@@ -268,26 +283,63 @@ class ArrisCompiler64(): # Outputs NASM syntax but follows PVCpu registers (64-b
                 self.text.append(f";;@Runlang-End")
             elif s.language == "vasm":
                 self.text.append("; VASM Runlang")
-                new_code = formatCode(s.code)
+                self.text.append(formatCode(s.code, s.vars, self.local_vars, self.global_vars))
             else:
-                self.text.append(f"")
-                self.text.append(f"call runlang_{s.language}")
+                self.text.append("\tmov qG1, [qSP + 1]\n")
+                self.text.append(formatCode(s.code, s.vars, self.local_vars, self.global_vars))
+                self.text.append(f"\tcall runlang_{s.language}")
+        elif isinstance(s, parser.FuncDecl):
+            if self.cur_func:
+                self.text.append("\tmov qG0, 0")
+                self.text.append("\tmov qSP, qSF")
+                self.text.append("\tpop qSF")
+                self.text.append("\tret")
+                self.current_offset_from_sf = 0
+            self.text.append(s.name + ":")
+            self.text.append("\tpush qSF")
+            self.text.append("\tmov qSF, qSP")
+            self.current_offset_from_sf = 0
+            self.local_vars[s.name] = {}
+            if s.params:
+                i = 1
+                for param in s.params:
+                    self.text.append(f"\tsub qSF, {param.len}")
+                    self.text.append(f"\tmov [qSF + {param.len}], qG{i}")
+                    self.local_vars[param.name] = (self.current_offset_from_sf, param.len)
+                    self.current_offset_from_sf += param.len
+                    i += 1
+            for stmt in s.body:
+                self.compile_stmt(stmt)
+        elif isinstance(s, parser.ReturnStmt):
+            if s.value:
+                self.compile_expr(s.value)
+            else:
+                self.text.append("\tmov qG0, 0")
+            self.text.append("\tmov qSP, qSF")
+            self.text.append("\tpop qSF")
+            self.text.append("\tret")
+            self.current_offset_from_sf = 0
+            self.local_vars.pop(self.cur_func, None)
+            self.cur_func = ""
         else:
             self.compile_expr(s)
     
     def compile(self):
         self.text.append("section .text")
-        self.text.append("global _main") # _main is _start here
-        self.text.append("_main:")
+        self.text.append("global __main") # __main is _start here
+        self.text.append("__main:")
+        self.text.append("\tpop qG1") # Get argc
+        self.text.append("\tmov qG2, qSP") # Get memaddr of argv
         self.text.append("\tpush qSF")
         self.text.append("\tmov qSF, qSP") # Save old stack frame and make new one
-        for s in self.ast:
-            self.compile_stmt(s)
+        self.text.append("\tcall main")
         self.text.append("\tmov qSP, qSF")
         self.text.append("\tpop qSF") # restore stack frame
+        self.text.append("\tmov qG1, qG0")
         self.text.append(f"\tmov qG0, {SYS_EXIT}")
-        self.text.append("\txor qG1, qG1")
         self.text.append("\tsyscall")
+        for s in self.ast:
+            self.compile_stmt(s)
 
         out = []
         if self.data: # Required sections

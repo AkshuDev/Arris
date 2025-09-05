@@ -1,0 +1,5 @@
+func void runlang_python(char* code) {
+    __py_simple__: {
+        "\$" code
+    }
+}
