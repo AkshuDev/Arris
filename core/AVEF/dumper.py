@@ -4,7 +4,7 @@ import instructionSet
 
 def dump_avef(data: bytes, debug_code:bool):
     archTable = {
-        0xA0A0: "PVCpu",
+        0xA0A0: "PVCpu (Pheonix-Virtual-CPU)",
     }
 
     # Unpack header

@@ -1,4 +1,4 @@
-@include "stdlib/stdio.alib"
+@inc "stdlib/stdio.alib"
 
 func int main() {
     print_stdout("hi")

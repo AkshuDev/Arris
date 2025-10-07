@@ -237,9 +237,11 @@ class Parser:
         if self.peek()[0] == TOK_ENDL: self.advance()
         
         code_tok = self.expect(TOK_LIT_STRING)
-        if self.peek()[0] == TOK_ENDL: self.advance()
-        
         code = code_tok[1]
+        while self.peek()[0] == TOK_LIT_STRING or self.peek()[0] == TOK_ENDL:
+            typ, value = self.advance()
+            if typ == TOK_LIT_STRING:
+                code += value
 
         # Format the string
         vars_list = []
