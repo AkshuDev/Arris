@@ -251,7 +251,7 @@ class Lexer():
                 self.advance()
                 continue
             elif c == ",":
-                self.makeToken(TOK_COMMA)
+                self.makeToken(TOK_COMMA, c)
                 self.advance()
                 continue
             elif c in " \t":

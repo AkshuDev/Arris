@@ -208,7 +208,7 @@ class Parser:
     
     # === Including ===
     def parse_include(self) -> None:
-        self.advance() # consume "@include"
+        self.advance() # consume "@inc"
         typ, filename = self.expect(TOK_LIT_STRING)
         code = ""
         
@@ -317,6 +317,8 @@ class Parser:
         if typ == TOK_ENDL: return None
         
         if typ == TOK_IDENTIFIER and val == "@include":
+            return self.parse_include()
+        elif typ == TOK_INC:
             return self.parse_include()
 
         if typ == TOK_GLOBAL:
