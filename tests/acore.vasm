@@ -1,0 +1,138 @@
+section .data
+section .bss
+section .rodata
+section .text
+global __arris__compilerinjected__main
+__arris__compilerinjected__main:
+	pop qG1
+	mov qG2, qSP
+	push qSF
+	mov qSF, qSP
+	call main
+	mov qSP, qSF
+	pop qSF
+	mov qG1, qG0
+	mov qG0, 0
+	syscall
+runlang_python:
+	push qSF
+	mov qSF, qSP
+	sub qSF, 64
+	mov [qSF + 64], qG1
+;;@Runlang: python-simple
+;;(0, 64)
+;;@Runlang-End
+	mov qG0, 0
+	mov qSP, qSF
+	pop qSF
+	ret
+__arris_syscall:
+	push qSF
+	mov qSF, qSP
+	sub qSF, 64
+	mov [qSF + 64], qG1
+	sub qSF, 64
+	mov [qSF + 64], qG2
+	sub qSF, 64
+	mov [qSF + 64], qG3
+	sub qSF, 64
+	mov [qSF + 64], qG4
+	sub qSF, 64
+	mov [qSF + 64], qG5
+	sub qSF, 64
+	mov [qSF + 64], qG6
+; VASM Runlang
+	push 'm'
+	push 'o'
+	push 'v'
+	push ' '
+	push 'q'
+	push 'G'
+	push '0'
+	push ','
+	push ' '
+	mov qG14, [qSF + 0]
+	push qG14
+	push 'm'
+	push 'o'
+	push 'v'
+	push ' '
+	push 'q'
+	push 'G'
+	push '1'
+	push ','
+	push ' '
+	mov qG14, [qSF + 64]
+	push qG14
+	push 'm'
+	push 'o'
+	push 'v'
+	push ' '
+	push 'q'
+	push 'G'
+	push '2'
+	push ','
+	push ' '
+	mov qG14, [qSF + 128]
+	push qG14
+	push 'm'
+	push 'o'
+	push 'v'
+	push ' '
+	push 'q'
+	push 'G'
+	push '3'
+	push ','
+	push ' '
+	mov qG14, [qSF + 192]
+	push qG14
+	push 'm'
+	push 'o'
+	push 'v'
+	push ' '
+	push 'q'
+	push 'G'
+	push '4'
+	push ','
+	push ' '
+	mov qG14, [qSF + 256]
+	push qG14
+	push 'm'
+	push 'o'
+	push 'v'
+	push ' '
+	push 'q'
+	push 'G'
+	push '5'
+	push ','
+	push ' '
+	mov qG14, [qSF + 320]
+	push qG14
+	push 0
+	mov qG0, 0
+	mov qSP, qSF
+	pop qSF
+	ret
+__arris_exit:
+	push qSF
+	mov qSF, qSP
+	sub qSF, 32
+	mov [qSF + 32], qG1
+	mov qG0, 0
+	mov qG1, qG0
+	mov dG0, [qSF + 0]
+	mov qG0, dG0
+	mov qG2, qG0
+	mov qG0, 0
+	mov qG3, qG0
+	mov qG0, 0
+	mov qG4, qG0
+	mov qG0, 0
+	mov qG5, qG0
+	mov qG0, 0
+	mov qG6, qG0
+	call __arris_syscall
+	mov qG0, 0
+	mov qSP, qSF
+	pop qSF
+	ret

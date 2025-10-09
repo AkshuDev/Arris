@@ -114,6 +114,13 @@ class ReturnStmt(Expr):
     def __init__(self, value: Optional[Expr]): self.value = value
     def __repr__(self): return f"Return({self.value})"
 
+class Cast(Expr):
+    def __init__(self, target_type: str, expr: Expr):
+        self.target_type = target_type
+        self.expr = expr
+    def __repr__(self):
+        return f"Cast({self.target_type}, {self.expr})"
+
 # === Parser ===
 class Parser:
     def __init__(self, tokens: List[Tuple[str,str]], include_runlang=True):
@@ -192,11 +199,23 @@ class Parser:
                 return FuncCall(val, args)
             return Var(val)
         elif typ == TOK_LPAR:
-            expr = self.parse_expr()
-            self.expect(TOK_RPAR)
-            return expr
+            # Lookahead for type-cast: (type)expr
+            next_tok = self.peek()
+            if next_tok[0] in [TOK_INT, TOK_UINT, TOK_CHAR, TOK_BOOL, TOK_VOID, TOK_BYTE,
+                            TOK_DWORD, TOK_WORD, TOK_QWORD, TOK_LONG]:
+                # It's a cast
+                type_tok = self.advance()
+                target_type = type_tok[0]
+                self.expect(TOK_RPAR)
+                expr = self.parse_primary()
+                return Cast(target_type, expr)
+            else:
+                # Normal parenthesized expression
+                expr = self.parse_expr()
+                self.expect(TOK_RPAR)
+                return expr
         else:
-            errorHandler.error(f"Unexpected token in expression: {typ}:{val}")
+            errorHandler.error(f"Unexpected token in expression: {typ}:{val} at {self.pos}")
 
     def get_precedence(self, op: str) -> int:
         prec_table = {
