@@ -65,6 +65,16 @@ def mask_for_bits(bits: int) -> int:
         return (1 << 64) - 1
     return (1 << bits) - 1
 
+def bits_to_bytes(bits: int) -> int:
+    if bits <= 0:
+        return 0
+    return (bits + 7) // 8
+
+def align_up(n: int, align: int = 8) -> int:
+    if align <= 0:
+        return n
+    return ((n + align - 1) // align) * align
+
 def formatString(string:str, vars:list, local_vars:dict={}, global_vars:dict={}, curfunc:str="__main") -> str:
     i = 0
     res = ""
@@ -107,7 +117,7 @@ def formatString(string:str, vars:list, local_vars:dict={}, global_vars:dict={},
 
     return res
 
-def formatCode(code:str, vars:list, local_vars:dict=None, global_vars:dict=None, curfunc:str="__main") -> str:
+def formatCode(code:str, vars:list, local_vars:dict={}, global_vars:dict={}, curfunc:str="__main") -> str:
     # This function emits VASM snippets as text lines. Keep behavior but be defensive.
     i = 0
     out_lines = []
@@ -211,20 +221,18 @@ class ArrisCompiler64(): # Outputs NASM syntax but follows PVCpu registers (64-b
         elif isinstance(e, parser.Var):
             # Load variable into qG0 and return current known value if any
             if e.name in self.global_vars:
-                len_bits = self.global_vars[e.name]
-                prefix = reg_prefix_for_bits(len_bits if len_bits>0 else 64)
+                len_bytes = self.global_vars[e.name]
+                prefix = reg_prefix_for_bits((len_bytes if len_bytes > 0 else 8) * 8)
                 if prefix == "q":
-                    self.text.append(f"\tmov qG0, [{e.name}]")
+                    self.text.append(f"\tmov, qG0, [{e.name}]")
                 else:
-                    # mov <prefix>G0, [label]
                     self.text.append(f"\tmov {prefix}G0, [{e.name}]")
-                    # For consistency, put full value into qG0 afterwards
                     self.text.append(f"\tmov qG0, {prefix}G0")
                 return self.global_vars_value.get(e.name, 0)
             else:
                 if self.cur_func and self.cur_func in self.local_vars and e.name in self.local_vars[self.cur_func]:
-                    offset, len_bits = self.local_vars[self.cur_func][e.name]
-                    prefix = reg_prefix_for_bits(len_bits if len_bits>0 else 64)
+                    offset, size_bytes = self.local_vars[self.cur_func][e.name]
+                    prefix = reg_prefix_for_bits((size_bytes if size_bytes>0 else 8) * 8)
                     if prefix == "q":
                         self.text.append(f"\tmov qG0, [qSF + {offset}]")
                     else:
@@ -274,19 +282,16 @@ class ArrisCompiler64(): # Outputs NASM syntax but follows PVCpu registers (64-b
                 self.global_vars_value[e.name] = getattr(e.value, "value", None) if isinstance(e.value, parser.Number) else None
             else:
                 if self.cur_func and self.cur_func in self.local_vars and e.name in self.local_vars[self.cur_func]:
-                    offset, len_bits = self.local_vars[self.cur_func][e.name]
-                    prefix = reg_prefix_for_bits(len_bits if len_bits>0 else 64)
+                    offset, size_bytes = self.local_vars[self.cur_func][e.name]
+                    prefix = reg_prefix_for_bits((size_bytes if size_bytes>0 else 8) * 8)
                     if prefix == "q":
                         self.text.append(f"\tmov [qSF + {offset}], qG0")
                     else:
-                        # Store smaller width
                         self.text.append(f"\tmov {prefix}G0, qG0")
                         self.text.append(f"\tmov [qSF + {offset}], {prefix}G0")
                     if self.cur_func not in self.local_vars_value:
                         self.local_vars_value[self.cur_func] = {}
                     self.local_vars_value[self.cur_func][e.name] = getattr(e.value, "value", None) if isinstance(e.value, parser.Number) else None
-                else:
-                    errorHandler.compilerError(f"No such variable to assign: {e.name}", 2)
             return None
         elif isinstance(e, parser.FuncCall):
             # Evaluate args left-to-right and place into qG1..qG5
@@ -323,38 +328,62 @@ class ArrisCompiler64(): # Outputs NASM syntax but follows PVCpu registers (64-b
         if isinstance(s, parser.VarDecl):
             # Global variable
             if s.name not in self.global_vars and s.global_ == True:
-                self.global_vars[s.name] = s.len
+                size_bits = s.len if hasattr(s, "len") else 8
+                size_bytes = bits_to_bytes(size_bits) or 1
                 init_val = NULL
+                if s.value and isinstance(s.value, parser.Number):
+                    init_val = str(s.value.value)
+
+                # choose directive for initialized vs uninitialized
                 if s.value:
-                    if isinstance(s.value, parser.Number):
-                        init_val = str(s.value.value)
-                # choose directive
-                if s.len == 0:
-                    # void global? treat as dq 0
-                    directive = "dq"
-                elif s.len == 1 or s.len == 8:
-                    directive = "db"
-                elif s.len == 16:
-                    directive = "dw"
-                elif s.len == 32:
-                    directive = "dd"
-                elif s.len == 64:
-                    directive = "dq"
+                    if size_bytes == 1:
+                        directive = "db"
+                        self.data.append(f"{s.name}: {directive} {init_val}")
+                    elif size_bytes == 2:
+                        directive = "dw"
+                        self.data.append(f"{s.name}: {directive} {init_val}")
+                    elif size_bytes == 4:
+                        directive = "dd"
+                        self.data.append(f"{s.name}: {directive} {init_val}")
+                    elif size_bytes == 8:
+                        directive = "dq"
+                        self.data.append(f"{s.name}: {directive} {init_val}")
+                    else:
+                        # large initialized object -> emit db bytes (simple case)
+                        bytes_list = ", ".join(str(b) for b in (init_val if isinstance(init_val, str) else [0]))
+                        self.data.append(f"{s.name}: db {bytes_list}")
                 else:
-                    directive = "dq"
-                self.data.append(f"{s.name}: {directive} {init_val}")
+                    # uninitialized -> bss
+                    self.bss.append(f"{s.name}: resb {size_bytes}")
+
+                # store global size in BYTES
+                self.global_vars[s.name] = size_bytes
                 self.global_vars_value[s.name] = init_val
+                return
             else:
                 # Local variable
                 if s.var_type == lexer.TOK_VOID and not s.ptr:
                     # nothing to allocate
-                    pass
+                    return
+                if not s.value:
+                    # BSS
+                    return # placeholder
                 else:
-                    allocate_bits = s.len if s.len > 0 else 8
-                    # align to bytes for this simple compiler
-                    self.text.append(f"\tsub qSF, {allocate_bits}")
-                    self.local_vars[self.cur_func][s.name] = (self.current_offset_from_sf, allocate_bits)
-                    self.current_offset_from_sf += allocate_bits
+                    if not self.cur_func or self.cur_func not in self.local_vars or s.name not in self.local_vars[self.cur_func]:
+                        errorHandler.compilerError(f"Internal compiler error: no slot for local variable {s.name} in {self.cur_func}")
+                    off, size = self.local_vars[self.cur_func][s.name]
+                    self.compile_expr(s.value) #qG0 holds init
+                    prefix = reg_prefix_for_bits(size * 8 if size > 0 else 64)
+                    if prefix == "q":
+                        self.text.append(f"\tmov [qSF + {off}], qG0")
+                    else:
+                        self.text.append(f"\tmov {prefix}G0, qG0")
+                        self.text.append(f"\tmov [qSF + {off}], {prefix}G0")
+
+                    if self.cur_func not in self.local_vars_value:
+                        self.local_vars_value[self.cur_func] = {}
+                    self.local_vars_value[self.cur_func][s.name] = getattr(s.value, "value", None) if isinstance(s.value, parser.Number) else None
+
 
             # initializer: if present, do assignment to variable
             if s.value:
@@ -390,21 +419,55 @@ class ArrisCompiler64(): # Outputs NASM syntax but follows PVCpu registers (64-b
             self.cur_func = s.name
             
             self.text.append(s.name + ":")
-            self.text.append("\tpush qSF")
-            self.text.append("\tmov qSF, qSP")
-            self.current_offset_from_sf = 0
-            self.local_vars[s.name] = {}
-            # params: place them into local frame
+
+            alloc_list = []
             if s.params:
                 i = 1
                 for param in s.params:
-                    # allocate space for param in frame and store incoming qG{i}
-                    self.text.append(f"\tsub qSF, {param.len}")
-                    # store qG{i} into [qSF + param.len]
-                    self.text.append(f"\tmov [qSF + {param.len}], qG{i}")
-                    self.local_vars[self.cur_func][param.name] = (self.current_offset_from_sf, param.len)
-                    self.current_offset_from_sf += param.len
+                    size_bits = getattr(param, "len", 0) or 32
+                    size_bytes = bits_to_bytes(size_bits) or 1
+                    size_aligned = align_up(size_bytes, 8) # align param storage to 8
+                    alloc_list.append((param.name, size_aligned, "param", param))
                     i += 1
+
+            # scan body for local var declarations
+            for stmt in s.body:
+                if isinstance(stmt, parser.VarDecl) and not getattr(stmt, "global_", False):
+                    size_bits = getattr(stmt, "len", 0) or 32
+                    size_bytes = bits_to_bytes(size_bits) or 1
+                    size_aligned = align_up(size_bytes, 8)
+                    alloc_list.append((stmt.name, size_aligned, "local", stmt))
+
+            # compute offsets
+            offsets = {}
+            cur_off = 0
+            for name, size_aligned, kind, origin in alloc_list:
+                offsets[name] = (cur_off, size_aligned)
+                cur_off += size_aligned
+
+            frame_size = align_up(cur_off, 8)
+
+            # emit prologue
+            self.text.append("\tpush qSF")
+            self.text.append("\tmov qSF, qSP")
+            if frame_size > 0:
+                self.text.append(f"\tsub qSF, {frame_size}")
+            
+            self.local_vars[self.cur_func] = offsets
+            self.local_vars_value[self.cur_func] = {}
+
+            if s.params:
+                i = 1
+                for param in s.params:
+                    off, size = self.local_vars[self.cur_func][param.name]
+                    prefix = reg_prefix_for_bits(size * 8 if size > 0 else 64)
+                    if prefix == "q":
+                        self.text.append(f"\tmov [qSF + {off}], qG{i}")
+                    else:
+                        self.text.append(f"\tmov {prefix}G{i}, qG{i}")
+                        self.text.append(f"\tmov [qSF + {off}], {prefix}G{i}")
+                    i += 1
+
             # compile body
             for stmt in s.body:
                 self.compile_stmt(stmt)

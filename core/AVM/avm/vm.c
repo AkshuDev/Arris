@@ -104,6 +104,19 @@ int parse_inst(AVEF_State* vm, AVEF_Instruction inst) {
             uint16_t no_ = (uint16_t)(src_val & 0xFFFFu);
             raise_int(vm, no_, &inst);
             break;
+        case CALL:
+            vm->REGS[QSP_REG] -= 8;
+            vm->memory[vm->REGS[QSP_REG]] = vm->pc + sizeof(AVEF_Instruction);
+            vm->pc = src_val;
+            break;
+        case RET:
+            uint64_t addr = (uint64_t)vm->memory[vm->REGS[QSP_REG]];
+            vm->REGS[QSP_REG] += 8;
+            vm->pc = addr;
+            break;
+        case LEA:
+            vm->REGS[dest] = src_val;
+            break;
         default:
             printf("Unknown instruction: %u\n", inst.instruction);
             return 1;
@@ -155,6 +168,9 @@ void run_vm(const unsigned char* buf, size_t buf_size, AVEF_State* state, AVEF_H
 
     // Alloc the stack
     state->REGS[QSP_REG] = state->mem_size; // stack grows downwards
+    state->memory[state->REGS[QSP_REG] - 8] = (uint64_t)0;
+    state->memory[state->REGS[QSP_REG] - 16] = (uint64_t)1;
+    state->REGS[QSP_REG] = state->mem_size - 16;
     state->REGS[QSF_REG] = NULL_;
 
     for (size_t i = 0; i < header->number_of_sections; i++) {
@@ -176,13 +192,13 @@ void run_vm(const unsigned char* buf, size_t buf_size, AVEF_State* state, AVEF_H
 
     while (state->running && state->pc < state->mem_size + 1) {
         AVEF_Instruction* inst = (AVEF_Instruction*)(state->memory + state->pc);
+        
+        state->pc += sizeof(AVEF_Instruction);
 
         int out = parse_inst(state, *inst);
         if (out != 0) { // Some error
             printf("Fault (program dumped)\n");
             return;
         }
-
-        state->pc += sizeof(AVEF_Instruction);
     }
 }

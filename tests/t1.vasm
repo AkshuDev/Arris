@@ -3,8 +3,8 @@ section .bss
 section .rodata
 str0: db 104, 105, 0
 section .text
-global __main
-__main:
+global __arris__compilerinjected__main
+__arris__compilerinjected__main:
 	pop qG1
 	mov qG2, qSP
 	push qSF
@@ -15,18 +15,75 @@ __main:
 	mov qG1, qG0
 	mov qG0, 0
 	syscall
+runlang_python:
+	push qSF
+	mov qSF, qSP
+	sub qSF, 8
+	mov [qSF + 0], qG1
+;;@Runlang: python-simple
+;;(0, 8)
+;;@Runlang-End
 	mov qG0, 0
 	mov qSP, qSF
 	pop qSF
 	ret
-runlang_python:
+__arris_syscall:
 	push qSF
 	mov qSF, qSP
-	sub qSF, 64
-	mov [qSF + 64], qG1
-;;@Runlang: python-simple
-;;
-;;@Runlang-End
+	sub qSF, 48
+	mov [qSF + 0], qG1
+	mov [qSF + 8], qG2
+	mov [qSF + 16], qG3
+	mov [qSF + 24], qG4
+	mov [qSF + 32], qG5
+	mov [qSF + 40], qG6
+; VASM Runlang
+	mov qG0, 0
+	mov qSP, qSF
+	pop qSF
+	ret
+__arris_exit:
+	push qSF
+	mov qSF, qSP
+	sub qSF, 8
+	mov [qSF + 0], qG1
+	mov qG0, 0
+	mov qG1, qG0
+	mov qG0, [qSF + 0]
+	mov qG2, qG0
+	mov qG0, 0
+	mov qG3, qG0
+	mov qG0, 0
+	mov qG4, qG0
+	mov qG0, 0
+	mov qG5, qG0
+	mov qG0, 0
+	mov qG6, qG0
+	call __arris_syscall
+	mov qG0, 0
+	mov qSP, qSF
+	pop qSF
+	ret
+print:
+	push qSF
+	mov qSF, qSP
+	sub qSF, 24
+	mov [qSF + 0], qG1
+	mov [qSF + 8], qG2
+	mov [qSF + 16], qG3
+	mov qG0, 2
+	mov qG1, qG0
+	mov qG0, [qSF + 8]
+	mov qG2, qG0
+	mov qG0, [qSF + 16]
+	mov qG3, qG0
+	mov qG0, [qSF + 0]
+	mov qG4, qG0
+	mov qG0, 0
+	mov qG5, qG0
+	mov qG0, 0
+	mov qG6, qG0
+	call __arris_syscall
 	mov qG0, 0
 	mov qSP, qSF
 	pop qSF
@@ -34,23 +91,15 @@ runlang_python:
 print_stdout:
 	push qSF
 	mov qSF, qSP
-	sub qSF, 64
-	mov [qSF + 64], qG1
-	mov qG1, [qSP + 1]
-
-	push 'p'
-	push 'r'
-	push 'i'
-	push 'n'
-	push 't'
-	push '('
-	push '''
-	push '$'
-	push '''
-	push ')'
-	push 0
-
-	call runlang_python
+	sub qSF, 8
+	mov [qSF + 0], qG1
+	mov qG0, [qSF + 0]
+	mov qG1, qG0
+	mov qG0, 0
+	mov qG2, qG0
+	mov qG0, 15
+	mov qG3, qG0
+	call print
 	mov qG0, 0
 	mov qSP, qSF
 	pop qSF
@@ -59,7 +108,7 @@ main:
 	push qSF
 	mov qSF, qSP
 	lea qG0, [str0]
-	mov qG1, str0
+	mov qG1, qG0
 	call print_stdout
 	mov qG0, 0
 	mov qSP, qSF

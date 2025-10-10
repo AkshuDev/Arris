@@ -1,3 +1,4 @@
+import re
 import struct
 import os
 import sys
@@ -272,6 +273,9 @@ class Lexer:
             case "resd":    self._emit(TK_RESD, s)
             case "resq":    self._emit(TK_RESQ, s)
             case "cqo":     self._emit(TK_CQO, s)
+            case "call":    self._emit(TK_CALL, s)
+            case "ret":     self._emit(TK_RET, s)
+            case "lea":     self._emit(TK_LEA, s)
             case _:
                 self._emit(TK_IDENTIFIER, s)
 
@@ -393,6 +397,8 @@ class PVcpuAssembler:
         self.line = 1
         self.relocs: Dict[str, Dict] = {}
         self.data_offset = 0
+        
+        self.byteorder = "little"
 
         self.align: int = 0x1000
 
@@ -453,7 +459,7 @@ class PVcpuAssembler:
             sec["bytes"].extend(data)
 
     def _emit_imm_le(self, value: int, width: int):
-        self._emit_bytes(int(value).to_bytes(width, "little", signed=False), width)
+        self._emit_bytes(int(value).to_bytes(width, self.byteorder, signed=False), width)
 
     def _mklabel(self, name:str, section:str, global_:bool, import_:bool, size:int, cur_sec_off:int=0) -> None:
         # check if it exists
@@ -484,12 +490,13 @@ class PVcpuAssembler:
         if not self.sections.get(name, None) == None: return
         self._mksection(name, vaddr, flags, align)
 
-    def _add_reloc(self, name:str, target:str, at:int, type:int) -> None:
+    def _add_reloc(self, name:str, target:str, at:int, type:int, offset:int=0) -> None:
         self.relocs[name] = {
             "name": name,
             "target": target,
             "at": at,
-            "type": type
+            "type": type,
+            "offset": offset
         }
 
     def _add_global_var_str(self, name:str, value:str, width:int) -> None:
@@ -520,7 +527,7 @@ class PVcpuAssembler:
         
         self.data_offset += 64 + 4 + len(value) + 1
 
-    def _get_bracket_data(self) -> Tuple[Tuple[int, str]]:
+    def _get_bracket_data(self) -> Tuple:
         lbrac = self._expect(TK_LBRACKET, "Expected '[',")
         reg = self._expect(TK_IDENTIFIER, "Expected register name,")
         opr = self._advance()
@@ -541,9 +548,32 @@ class PVcpuAssembler:
         self._emit_imm_le(imm, 8)
         self._emit_imm_le(mode, 2)
 
+    def _to_bytes(self, obj:object, size: int=8, signed: bool=False) -> bytes:
+        if isinstance(obj, str):
+            return obj.encode("utf-8")
+        elif isinstance(obj, int):
+            return obj.to_bytes(size, self.byteorder, signed=signed)
+        elif isinstance(obj, bytes):
+            return obj
+        else:
+            asm_error(f"Tried to convert value: {obj} to bytes!")
+
+    def _get_width(self, tok:tuple[int, str]) -> int:
+        token = tok[0]
+        if token == TK_DB: 
+            return 1
+        elif token == TK_DW:
+            return 2
+        elif token == TK_DD:
+            return 4
+        elif token == TK_DQ:
+            return 8
+        else:
+            asm_error(f"Unexpected data size: {tok[1]}")
+
     # Assembler singlular instructions
     def assemble_inst(self, inst:tuple[int, str]) -> None:
-        current_sec = ".text"
+        current_sec = self.current_section
 
         typ = inst[0]
         val = inst[1]
@@ -585,6 +615,7 @@ class PVcpuAssembler:
         if typ == TK_SECTION:
             sec = self._expect(TK_IDENTIFIER, "Expected Section Name,")[1]
             current_sec = sec
+            print("Inside section:", sec)
             self.current_section = sec
             self._mksection_ifnpresent(sec, 0x0, 0x0, 0x0);
             return
@@ -599,20 +630,40 @@ class PVcpuAssembler:
             return
         elif typ == TK_IDENTIFIER:
             nxt = self._advance()
-            if nxt[0] == TK_LABEL:
+            if nxt[0] == TK_LABEL and not self._peek()[0] in [TK_DB, TK_DW, TK_DD, TK_DQ] :
                 # Label
                 self._mklabel(val, current_sec, False, False, len(val))
-            elif nxt[0] in [TK_DB, TK_DW, TK_DD, TK_DQ]:
-                if not current_sec == ".data":
-                    asm_error("Tried to define data outside of the .data section!")
+            elif (nxt[0] in [TK_DB, TK_DW, TK_DD, TK_DQ]) or (nxt[0] == TK_LABEL and self._peek()[0] in [TK_DB, TK_DW, TK_DD, TK_DQ]):
+                if not current_sec == ".data" and not current_sec == ".rodata":
+                    asm_error(f"Tried to define data outside of the .data/.rodata section! Error in {current_sec} section.")
+                width = 8
+                if nxt[0] == TK_LABEL: 
+                    width = self._get_width(self._advance())
+                else: 
+                    width = self._get_width(nxt)
                 value = self._advance()
 
                 if not value[0] in [TK_IDENTIFIER]:
                     asm_error("Unknown Assignment value: ", value[1])
 
-                self._add_global_var_str(val, value[1], nxt[0])
-            else: asm_error("Unknown Instruction: ", val)
-            return
+                final_value = self._to_bytes(value[1], width)
+                over = False
+                while not over:
+                    if value[0] == TK_ENDL:
+                        over = True
+                    if value[0] == TK_COMMA:
+                        value = self._advance()
+                    final_value += self._to_bytes(value[1], width)
+                    value = self._advance()
+                    if value[0] == TK_ENDL:
+                        over = True
+                        continue
+                    if not value[0] == TK_COMMA:
+                        asm_error(f"Multiple bytes defined without ',' (comma): {value[1]}")
+                self._mklabel(val, current_sec, True, False, width)
+            else: 
+                asm_error("Unknown Instruction: ", val)
+                return
         elif typ == TK_MOV:
             tok = self._peek()
             if tok[0] == TK_LBRACKET:
@@ -708,10 +759,31 @@ class PVcpuAssembler:
             self._emit_inst(INT, 0, 0, 0x80, IMMONLY) # inturrupt at 0x80 for syscall
         elif typ == TK_CALL:
             label = self._expect(TK_IDENTIFIER, "Expected label,")
-            if not self.labels.get(label, None):
-                print(f"Unknown label [{label}]!")
-                exit(1)
-            self._add_reloc(label, label, )
+            label_name = label[1]
+            reloc_at = len(self.sections[self.current_section]["bytes"])
+            self._add_reloc(label_name, label_name, reloc_at + 10, 8) # 8-byte addr
+            self._emit_inst(CALL, 0, 0, 0, IMMONLY)
+        elif typ == TK_RET:
+            self._emit_inst(RET, 0, 0, 0, NULL) # It just returns!
+        elif typ == TK_LEA:
+            dest = self._expect(TK_IDENTIFIER, "Expected a register ")
+            self._expect(TK_COMMA, "Expected ',' ") # consume ,
+            self._expect(TK_LBRACKET, "Expected '[' ") # consume [
+            src = self._expect(TK_IDENTIFIER, "Expected a source ")
+            nxt = self._advance()
+            off = 0
+            if nxt[0] == TK_PLUS or nxt[0] == TK_SUB:
+                nxt2 = self._expect(TK_IDENTIFIER, "Expected a value ")
+                if isinstance(nxt2[1], str) and nxt2[1].isdigit():
+                    if nxt[0] == TK_PLUS:
+                        off += int(nxt2[1])
+                    else:
+                        off -= int(nxt2[1])
+                else:
+                    asm_error(f"Expected a number, got {nxt2[1]} instead!")
+            reloc_at = len(self.sections[self.current_section]["bytes"])
+            self._add_reloc(src[1], src[1], reloc_at + 10, 8, off) # 8 byte addr
+            self._emit_inst(LEA, 0, 0, 0, IMMONLY)
         else:
             asm_error("Unknown instruction: '", val, f"' at line: {self.line}, token: {self.tok}")
 
@@ -811,10 +883,11 @@ class PVcpuAssembler:
         # Resolve Relocs
         for reloc_ in self.relocs:
             reloc = self.relocs[reloc_]
-            label = self.labels[reloc["target"]]
+            label = self.labels[reloc["target"]] if reloc["target"] in self.labels else asm_error(f"{reloc["target"]} relocation not found!")
+            offset = reloc["offset"] if "offset" in reloc else 0
             bs = body_chunks[text_sec_i][1]
             pad_ = body_chunks[text_sec_i][0]
-            body_chunks[text_sec_i] = (pad_, bs[:reloc["at"]] + (self.sections[label["section"]]["vaddr"] + label["location"]).to_bytes(reloc["type"], "little", signed=True) + bs[reloc["at"] + reloc["type"]:])
+            body_chunks[text_sec_i] = (pad_, bs[:reloc["at"]] + (self.sections[label["section"]]["vaddr"] + label["location"] + offset).to_bytes(reloc["type"], "little", signed=True) + bs[reloc["at"] + reloc["type"]:])
 
         # section table bytes
         sec_table = bytearray()

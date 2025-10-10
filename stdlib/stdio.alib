@@ -1,7 +1,7 @@
 @inc "stdlib/acore.alib"
 
-func int print(char* v, int fd, int len) {
-    return (int)__arris_syscall(2, (long)fd, (long)len, (long)v, 0, 0);
+func void print(char* v, int fd, int len) {
+    __arris_syscall(2, (long)fd, (long)len, (long)v, 0, 0);
 }
 
 func void print_stdout(char* v) {

@@ -6,7 +6,7 @@ static char* avef_code = NULL;
 static long avef_size = 0;
 static FILE* avef_fd = NULL;
 
-void load_file(const char* file) {
+int load_file(const char* file) {
     avef_fd = fopen(file, "rb");
     if (!avef_fd) {
         perror("Could not open AVEF file!\n");

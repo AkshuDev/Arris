@@ -10,6 +10,8 @@
 #define QSP_REG 60
 #define QSF_REG 61
 #define QG0_REG 43
+#define QG1_REG 44
+#define QG2_REG 45
 #define QG3_REG 46
 
 #define SEC_R (1 << 0)
@@ -28,7 +30,7 @@
 #define NULL_ 0
 
 struct AVEF_State;
-typedef void (*IntHandler) (struct AVEF_State* state, uint16_t int_no, const AVEF_Instruction* inst);
+typedef void (*IntHandler) (struct AVEF_State* state, uint16_t int_no, AVEF_Instruction* inst);
 
 typedef struct AVEF_State {
     int running; // 0 = False, 1 = True
