@@ -2,7 +2,7 @@ import re
 import struct
 import os
 import sys
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict, Optional, Literal
 import copy
 
 # This assembler uses PVCpu registers but custom format!
@@ -395,10 +395,10 @@ class PVcpuAssembler:
         self.entry_point: int = 0
         self.tok = 1
         self.line = 1
-        self.relocs: Dict[str, Dict] = {}
+        self.relocs: List[Dict] = []
         self.data_offset = 0
         
-        self.byteorder = "little"
+        self.byteorder:Literal["little", "big"] = "little"
 
         self.align: int = 0x1000
 
@@ -491,13 +491,13 @@ class PVcpuAssembler:
         self._mksection(name, vaddr, flags, align)
 
     def _add_reloc(self, name:str, target:str, at:int, type:int, offset:int=0) -> None:
-        self.relocs[name] = {
+        self.relocs.append({
             "name": name,
             "target": target,
             "at": at,
             "type": type,
             "offset": offset
-        }
+        })
 
     def _add_global_var_str(self, name:str, value:str, width:int) -> None:
         w = b"\x00"
@@ -626,13 +626,13 @@ class PVcpuAssembler:
             return
         elif typ == TK_EXTERN:
             name = self._expect(TK_IDENTIFIER, "Expected Label name,")[1]
-            self._mklabel(name, current_sec, False, True)
+            self._mklabel(name, current_sec, False, True, 0)
             return
         elif typ == TK_IDENTIFIER:
             nxt = self._advance()
             if nxt[0] == TK_LABEL and not self._peek()[0] in [TK_DB, TK_DW, TK_DD, TK_DQ] :
                 # Label
-                self._mklabel(val, current_sec, False, False, len(val))
+                self._mklabel(val, current_sec, False, False, 0, len(self.sections[current_sec]["bytes"]))
             elif (nxt[0] in [TK_DB, TK_DW, TK_DD, TK_DQ]) or (nxt[0] == TK_LABEL and self._peek()[0] in [TK_DB, TK_DW, TK_DD, TK_DQ]):
                 if not current_sec == ".data" and not current_sec == ".rodata":
                     asm_error(f"Tried to define data outside of the .data/.rodata section! Error in {current_sec} section.")
@@ -760,6 +760,7 @@ class PVcpuAssembler:
         elif typ == TK_CALL:
             label = self._expect(TK_IDENTIFIER, "Expected label,")
             label_name = label[1]
+            print("Adding Relocation for", label_name)
             reloc_at = len(self.sections[self.current_section]["bytes"])
             self._add_reloc(label_name, label_name, reloc_at + 10, 8) # 8-byte addr
             self._emit_inst(CALL, 0, 0, 0, IMMONLY)
@@ -783,7 +784,7 @@ class PVcpuAssembler:
                     asm_error(f"Expected a number, got {nxt2[1]} instead!")
             reloc_at = len(self.sections[self.current_section]["bytes"])
             self._add_reloc(src[1], src[1], reloc_at + 10, 8, off) # 8 byte addr
-            self._emit_inst(LEA, 0, 0, 0, IMMONLY)
+            self._emit_inst(LEA, REGS[dest[1].lower()], 0, 0, IMMONLY)
         else:
             asm_error("Unknown instruction: '", val, f"' at line: {self.line}, token: {self.tok}")
 
@@ -881,9 +882,9 @@ class PVcpuAssembler:
         )
 
         # Resolve Relocs
-        for reloc_ in self.relocs:
-            reloc = self.relocs[reloc_]
+        for reloc in self.relocs:
             label = self.labels[reloc["target"]] if reloc["target"] in self.labels else asm_error(f"{reloc["target"]} relocation not found!")
+            print("Relocating for:", reloc["name"])
             offset = reloc["offset"] if "offset" in reloc else 0
             bs = body_chunks[text_sec_i][1]
             pad_ = body_chunks[text_sec_i][0]

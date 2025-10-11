@@ -1,4 +1,4 @@
-# [opcode:u16][a:u32][b:u32][c:u32][mode:u16] Instruction format (16-byte each)
+# [opcode:u16][src:u32][dest:u32][imm:u64][mode:u16] Instruction format (20-byte each)
 
 # Modes
 REGREG = 1 # Register into/to Register

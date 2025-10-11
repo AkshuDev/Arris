@@ -38,6 +38,14 @@ __arris_syscall:
 	mov [qSF + 32], qG5
 	mov [qSF + 40], qG6
 ; VASM Runlang
+	mov qG0, [qSF + 0]
+	mov qG1, [qSF + 8]
+	mov qG2, [qSF + 16]
+	mov qG3, [qSF + 24]
+	mov qG4, [qSF + 32]
+	mov qG5, [qSF + 40]
+	syscall
+; Runlang-End
 	mov qG0, 0
 	mov qSP, qSF
 	pop qSF

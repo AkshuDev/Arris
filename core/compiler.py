@@ -117,7 +117,51 @@ def formatString(string:str, vars:list, local_vars:dict={}, global_vars:dict={},
 
     return res
 
-def formatCode(code:str, vars:list, local_vars:dict={}, global_vars:dict={}, curfunc:str="__main") -> str:
+def formatCode_raw(code:str, vars:list, local_vars:dict={}, global_vars:dict={}, curfunc:str="global") -> str:
+    # This func does the same as formatCode but with less defense, and better output
+    i = 0
+    out_lines = []
+    bslash = False
+    buffer = ""
+    used_vars = 0
+
+    for c in code:
+        if c == "\\":
+            bslash = True
+            continue
+
+        if bslash and c == "n":
+            bslash = False
+            out_lines.append("\t" + buffer)
+            buffer = ""
+            continue
+
+        if bslash and c == "$":
+            if used_vars >= len(vars):
+                errorHandler.compilerError(("formatCode: no enough variables provided"))
+            var = vars[used_vars]
+            typ = var[0]
+            val = var[1]
+            used_vars += 1
+
+            if curfunc and curfunc in local_vars and val in local_vars[curfunc]:
+                offset, _len = local_vars[curfunc][val]
+                buffer += f"[qSF + {offset}]"
+            elif val in global_vars:
+                buffer += f"[{val}]"
+            else:
+                errorHandler.compilerError(f"Variable: {val} was not found!")
+            bslash = False
+            continue
+
+        buffer += c
+        i += 1
+
+    out_lines.append("\t" + buffer)
+
+    return "\n".join(out_lines)
+
+def formatCode(code:str, vars:list, local_vars:dict={}, global_vars:dict={}, curfunc:str="global") -> str:
     # This function emits VASM snippets as text lines. Keep behavior but be defensive.
     i = 0
     out_lines = []
@@ -398,7 +442,9 @@ class ArrisCompiler64(): # Outputs NASM syntax but follows PVCpu registers (64-b
                 self.text.append(f";;@Runlang-End")
             elif s.language == "vasm":
                 self.text.append("; VASM Runlang")
-                
+                code = formatCode_raw(s.code, s.vars, self.local_vars, self.global_vars, self.cur_func)
+                self.text.append(f"{code}")
+                self.text.append(f"; Runlang-End")
             else:
                 # Generic runlang call
                 self.text.append("\tmov qG1, [qSP + 1]\n")

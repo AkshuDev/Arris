@@ -9,8 +9,8 @@ import compiler
 
 from AVEF import Assembler, instructionSet
 
-file_:str = None
-code:str = None
+file_:str = ""
+code:str = ""
 debug:bool = False
 compile_:bool = False
 memsize:int = 1024 * 1024 # 1MB
@@ -28,6 +28,8 @@ disassemble:bool = False
 assembled_output_dir_def:str = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../temp")
 assembled_output_def:str = os.path.join(assembled_output_dir_def, "aout.avef")
 
+better_dump = False
+
 avm_dir_path:str = os.path.join(os.path.dirname(os.path.abspath(__file__)), "AVM")
 avm_bin_path:str = os.path.join(avm_dir_path, "avm_bin")
 avm_path:str = os.path.join(avm_bin_path, "avm")
@@ -41,17 +43,17 @@ if __name__ == "__main__":
             if i == 0:
                 continue
 
-            if v == "-debug":
+            if v == "--debug":
                 debug = True
-            elif v == "-compile":
+            elif v == "--compile":
                 compile_ = True
             elif "--memory" in v and len(v.split("=")) > 1:
                 memsize = helpers.ToInt(v.split("=")[1])
-            elif v == "-exit-alex":
+            elif v == "--exit-alex":
                 onlylex = True
-            elif v == "-lex-out":
+            elif v == "--lex-out":
                 lexout = True
-            elif v == "-parse-out":
+            elif v == "--parse-out":
                 parseout = True
             elif v == "--bits" and len(v.split("=")) > 1:
                 compileMode = helpers.ToInt(v.split("=")[1])
@@ -59,21 +61,24 @@ if __name__ == "__main__":
                 compileOut = v.split("=")[1]
             elif "--assembled-out" in v and len(v.split("=")) > 1:
                 asmOut = v.split("=")[1]
-            elif v == "-disassemble":
+            elif v == "--disassemble":
                 disassemble = True
+            elif v == "--better-dump":
+                better_dump = True
             elif v == "-dump-avef" or v == "-avef-dump":
                 from AVEF import dumper
                 
                 d = b""
                 with open(files[0], "rb") as f:
                     d = f.read()
-                dumper.dump_avef(d, disassemble)
+                better = True if better_dump and disassemble else False
+                dumper.dump_avef(d, better, decoder=dumper.pvcpu_avef_decoder)
                 exit(0)
-            elif v == "-exit-acompile": # Exit after compile
+            elif v == "--exit-acompile": # Exit after compile
                 exitAfterCompile = True
-            elif v == "-exit-aassemble": # Exit after Assemble
+            elif v == "--exit-aassemble": # Exit after Assemble
                 exitAfterAssembling = True
-            elif v == "-exit-aparse": # Exit after Parse
+            elif v == "--exit-aparse": # Exit after Parse
                 exitAfterParsing = True
             else:
                 file_ = v

@@ -1,84 +1,226 @@
 import struct
-import Assembler
-import instructionSet
+from Assembler import *
+from instructionSet import *
+from typing import *
+import string
 
-def dump_avef(data: bytes, debug_code:bool):
-    archTable = {
-        0xA0A0: "PVCpu (Pheonix-Virtual-CPU)",
+archTable = {
+    0xA0A0: "PVCpu-Avef (Pheonix-Virtual-CPU-Avef)",
+    0xA0A1: "PVCpu (Pheonix-Virtual-CPU)",
+}
+
+_printable = set(string.printable) - set('\r\n\t\x0b\x0c')
+
+def _to_ascii(bs: bytes) -> str:
+    return ''.join(chr(b) if 32 <= b < 127 else '.' for b in bs)
+
+def _read_header(av: bytes):
+    if len(av) < HEADER_SIZE:
+        raise ValueError("Not a valid AVEF file (too small)")
+    magic, version, arch, entry, sec_tab_off, sec_count, flags, mem_size, _ = struct.unpack(
+        HEADER_FMT, av[:HEADER_SIZE]
+    )
+    return {
+        "magic": magic,
+        "version": version,
+        "arch": arch,
+        "entry": entry,
+        "sec_table_offset": sec_tab_off,
+        "sec_count": sec_count,
+        "flags": flags,
+        "mem_size": mem_size,
     }
 
-    # Unpack header
-    print("RAW Header:", data[:Assembler.HEADER_SIZE].hex(" "))
-    magic, version, arch, entry, sec_off, nsects, flags, mem_size, reserved = struct.unpack(Assembler.HEADER_FMT, data[:Assembler.HEADER_SIZE])
-    print("Magic:", magic.decode())
-    print("Version:", hex(version))
-    print("Architecture RAW:", hex(arch))
-    print("Architecture:", archTable.get(arch, "Unknown"))
-    print("Entry Point:", hex(entry))
-    print("Section Table Offset:", hex(sec_off))
-    print("Number of Sections:", nsects)
-    print("Flags:", hex(flags))
-    print("Memory Size (bytes):", hex(mem_size))
+def _read_sections(av: bytes, header: dict):
+    sections = []
+    sec_off = header["sec_table_offset"]
+    sec_cnt = header["sec_count"]
+    # choose entry size
+    entry_sz = SECTION_SIZE 
+    for i in range(sec_cnt):
+        off = sec_off + i * entry_sz
+        if off + entry_sz > len(av):
+            raise ValueError("Section table truncated")
+        else:
+            fields = av[off:off+SECTION_SIZE]
+            name, vaddr, file_off, size, flags, align = struct.unpack(SECTION_FMT, fields)
+            name = name.decode("utf-8").strip("\x00")
+            sections.append({
+                "name": name,
+                "vaddr": vaddr,
+                "file_offset": file_off,
+                "size": size,
+                "flags": flags,
+                "align": align,
+            })
+    return sections
 
-    # Section table
-    offset = Assembler.HEADER_SIZE
-    for i in range(nsects):
-        print("RAW Entry:", data[offset:offset + Assembler.SECTION_SIZE].hex(" "))
-        name, vaddr, file_off, size, flags, align = struct.unpack(Assembler.SECTION_FMT, data[offset:offset + Assembler.SECTION_SIZE])
-        print(f"\nSection {i+1}:")
-        print("Name:", name.decode("utf-8").strip("\x00"))
-        print("Virtual Address:", hex(vaddr))
-        print("File Offset:", hex(file_off))
-        print("Size:", hex(size))
-        print("Flags:", hex(flags))
-        print("Align:", hex(align))
-        offset += Assembler.SECTION_SIZE
-        
-        str_name:str = name.decode("utf-8").strip("\x00")
+def _get_labels(data: Optional[bytes]) -> Optional[dict]:
+    if not data: return None
     
-        print("Data in hex:", data[file_off:file_off + size].hex())
-        if str_name == ".text" and debug_code:
-            print("Trying to decode the data...")
-            index = 0
-            instructions:list[bytes] = []
-            instruction:bytes = b""
-            for i in range(len(data[file_off:file_off + size])):
-                index += 1
-                instruction += data[file_off + i:file_off + i + 1]
-                if index == 20: # 20 byte instructions
-                    index = 0
-                    instructions.append(instruction)
-                    instruction = b""
-                    
-            for inst in instructions:
-                print("RAW instruction:", inst.hex(" "))
-                instruction = int().from_bytes(inst[0:2], "little") # 2 bytes
-                src = int().from_bytes(inst[2:6], "little")
-                dest = int().from_bytes(inst[6:10], "little")
-                imm = int().from_bytes(inst[10:18], "little")
-                mode = int().from_bytes(inst[18:20], "little")
-                
-                # get instruction
-                print("Instruction:", instructionSet.debug_inst.get(instruction, "Unknown"))
-                print("Source:", instructionSet.debug_regs.get(src, "Unknown"))
-                print("Dest:", instructionSet.debug_regs.get(dest, "Unknown"))
-                print("Imm:", imm)
-                print("Mode:", instructionSet.debug_modes.get(mode, "Unknown"))
-                print("\n")
-        elif str_name in [".data", ".bss", ".symbols"]:
-            print("Trying to decode data...")
-            vars:list[bytes] = []
-            var:bytes = b""
-            index:int = 0
-            
-            while True:
-                if index >= size: break
-                byte = data[file_off + index:file_off + index + 1]
-                index += 1
-                var += byte
-                if byte == b"\x00":
-                    vars.append(var[:len(var) - 1])
-                    var = b""
+    idx = 0
+    return None # TODO: Make it
 
-            for var in vars:
-                print("Data: '" + var.decode("utf-8") + "'")
+def dump_avef(av: bytes,
+              better: bool = False,
+              bytes_per_line: int = 20,
+              show_sections: Optional[list] = [".text", ".data", ".bss", ".rodata"],
+              symbols: Optional[Dict[int, str]] = None,
+              decoder: Optional[Callable[[int, bytes, dict], Tuple[str, int]]] = None):
+    """
+    av: raw AVEF bytes
+    better: if True, collapse runs of zero-lines, print labels from symbols dict, attempt decode using decoder.
+    bytes_per_line: how many bytes per hexdump line
+    show_sections: optional list of section names to dump (None = all)
+    symbols: optional mapping {vaddr: "symbol_name"} used to annotate output
+    decoder: optional function decoder(vaddr, full_bytes_from_vaddr, labels) -> (mnemonic_str_or_None, size_used)
+             If mnemonic_str_or_None is not None, the dumper will print that mnemonic on its own line and skip those bytes.
+    """
+    hdr = _read_header(av)
+    print("AVEF Header:")
+    print(f"  Magic: {hdr['magic']!r}")
+    print(f"  Version: 0x{hdr['version']:04x}")
+    print(f"  ArchId: {archTable.get(hdr['arch'], "<Unknown>")}")
+    print(f"  Entry: 0x{hdr['entry']:x}")
+    print(f"  Section table offset: {hdr['sec_table_offset']}")
+    print(f"  Section count: {hdr['sec_count']}")
+    print(f"  Flags: 0x{hdr['flags']:x}")
+    print(f"  Mem size required: 0x{hdr['mem_size']:x}")
+    print()
+
+    sections = _read_sections(av, hdr)
+    #labels = _get_labels(av[sections[".labels"]["file_offset"]:sections[".labels"]["file_offset"] + sections[".labels"]["size"]] if ".labels" in sections else None)
+    labels = None
+    # filter
+    if show_sections:
+        sections = [s for s in sections if s['name'] in show_sections]
+
+    # Print section summary
+    print("Sections:")
+    for s in sections:
+        print(f"  {s['name']:<12} vaddr=0x{s['vaddr']:08x} size=0x{s['size']:x} file_off=0x{s['file_offset']:x} flags=0x{s['flags']:x} align=0x{s['align']:x}")
+    print()
+
+    # Dump each section in a clean objdump-like format
+    for s in sections:
+        name = s['name']
+        vaddr = s['vaddr']
+        size = s['size']
+        foff = s['file_offset']
+
+        print(f"{name} (0x{vaddr:08x} - 0x{vaddr + size:08x}) size=0x{size:x}")
+        if size == 0:
+            print("  <empty>")
+            print()
+            continue
+
+        # extract section bytes from file, if file_off is 0 treat as zero-filled BSS
+        if foff == 0 or foff + size > len(av):
+            data = bytes([0]) * size
+        else:
+            data = av[foff:foff + size]
+
+        # collapse runs of zero lines like objdump does
+        collapse = better
+        repeated_zero = False
+        zero_line = b'\x00' * bytes_per_line
+
+        # iterate through data by bytes_per_line
+        addr = vaddr
+        idx = 0
+        last_was_zeros = False
+        while idx < len(data):
+            # if decoder provided and better mode: try to decode an instruction at this vaddr
+            if decoder is not None and name not in [".rodata", ".data"]:
+                # pass the remaining bytes starting at this vaddr (virtual map)
+                remaining = data[idx:]
+                decoded = decoder(addr, remaining, labels)
+                if decoded:
+                    mnemonic, used = decoded
+                    if mnemonic is not None and used > 0:
+                        # print label if exists
+                        if symbols and addr in symbols:
+                            print(f"{symbols[addr]}:")
+                        # print address + mnemonic
+                        print(f"  0x{addr:08x}:    {mnemonic}")
+                        idx += used
+                        addr += used
+                        last_was_zeros = False
+                        continue
+
+            # normal hexdump line
+            line = data[idx:idx + bytes_per_line]
+            if collapse and line == zero_line:
+                # find how many consecutive zero lines
+                run = 1
+                j = idx + bytes_per_line
+                while j < len(data) and data[j:j+bytes_per_line] == zero_line:
+                    run += 1
+                    j += bytes_per_line
+                if run > 2:
+                    # collapse
+                    # print previous lines if not already printed a star
+                    print(f"  *\t<skipped {run * bytes_per_line} bytes of zeros>")
+                    idx = j
+                    addr += run * bytes_per_line
+                    last_was_zeros = True
+                    continue
+                # otherwise, fallthrough to normal printing
+
+            # print label if present at address
+            if symbols and addr in symbols:
+                print(f"{symbols[addr]}:")
+
+            # hex bytes grouped in 4s for readability
+            hex_groups = []
+            for i in range(0, len(line), 4):
+                chunk = line[i:i+4]
+                hex_groups.append(' '.join(f"{b:02x}" for b in chunk))
+            hex_part = '   '.join(hex_groups)
+            ascii_part = _to_ascii(line)
+            print(f"  0x{addr:08x}:  {hex_part:<{bytes_per_line * 2 + (bytes_per_line//4 - 1) * 3}}  |{ascii_part}|")
+
+            idx += bytes_per_line
+            addr += bytes_per_line
+            last_was_zeros = (line == zero_line)
+
+        print()
+
+def pvcpu_avef_decoder(vaddr: int, data: bytes, labels: dict={}) -> tuple[str, int]:
+    """
+    PrePacked PVCpu-AVEF decoder
+    """
+    labels = labels if labels else {}
+    if len(data) < 1: return ("<cannot decode>", 20)
+    op = int.from_bytes(data[:2], "little")
+    src = int.from_bytes(data[2:6], "little")
+    dest = int.from_bytes(data[6:10], "little")
+    imm = int.from_bytes(data[10:18], "little")
+    mode = int.from_bytes(data[18:20], "little")
+    inst = f"{labels[vaddr]}: " if vaddr in labels else ""
+
+    inst += debug_inst.get(op, "<unknown>").lower() + " "
+
+    if mode == REGREG:
+        inst += debug_regs.get(dest, "<unknown>").lower() + ", "
+        inst += debug_regs.get(src, "<unknown>").lower()
+    elif mode == MEMREG:
+        inst += "[" + debug_regs.get(dest, "<unknown>").lower() + " + " + str(hex(imm)) + "], "
+        inst += debug_regs.get(src, "<unknown>").lower()
+    elif mode == MEMDIR:
+        inst += debug_regs.get(dest, "<unknown>").lower() + ", [" + str(hex(imm)) + "]"
+        if imm in labels: inst += f"\t{labels[imm]}"
+    elif mode == REGDIR:
+        inst += debug_regs.get(dest, "<unknown>").lower() + ", " + str(imm)
+    elif mode == MEMONLY:
+        inst += "[" + str(hex(imm)) + "]"
+        if imm in labels: inst += f"\t{labels[imm]}"
+    elif mode == IMMONLY:
+        inst += str(imm)
+    elif mode == NULL:
+        pass
+    else:
+        inst += "<cannot decode>"
+
+    return (inst, 20)
+

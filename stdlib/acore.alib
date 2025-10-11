@@ -1,11 +1,12 @@
 func long __arris_syscall(long id, long a1, long a2, long a3, long a4, long a5) {
     __vasm__ {
-        "mov qG0, \$"
-        "mov qG1, \$"
-        "mov qG2, \$"
-        "mov qG3, \$"
-        "mov qG4, \$"
-        "mov qG5, \$",
+        "mov qG0, \$\n"
+        "mov qG1, \$\n"
+        "mov qG2, \$\n"
+        "mov qG3, \$\n"
+        "mov qG4, \$\n"
+        "mov qG5, \$\n"
+        "syscall",
         id, a1, a2, a3, a4, a5
     };
 }
