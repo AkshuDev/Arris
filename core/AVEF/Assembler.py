@@ -670,9 +670,9 @@ class PVcpuAssembler:
                 data = self._get_bracket_data()
                 self._advance()
                 if data[0] == MEMDIR:
-                    self._emit_inst(MOV, 0, REGS[self._expect(TK_IDENTIFIER, "Expected register name,")[1].lower()], int(data[2][1]), MEMDIR)
+                    self._emit_inst(MOV, 0, REGS[self._expect(TK_IDENTIFIER, "Expected register name in M,")[1].lower()], int(data[2][1]), REGMEM)
                 elif data[0] == MEMREG:
-                    regsrc = self._expect(TK_IDENTIFIER, "Expected Register name,")
+                    regsrc = self._expect(TK_IDENTIFIER, "Expected Register name in MO,")
                     reg2 = REGS[regsrc[1].lower()]
                     reg1 = REGS[data[2][1].lower()]
                     imm = 0
@@ -680,10 +680,10 @@ class PVcpuAssembler:
                         imm = int(data[4][1])
                     else:
                         imm = -int(data[4][1])
-                    self._emit_inst(MOV, reg1, reg2, imm, MEMREG)
+                    self._emit_inst(MOV, reg1, reg2, imm, REGMEMREG)
                 return
 
-            reg = self._expect(TK_IDENTIFIER, "Expected register name,")
+            reg = self._expect(TK_IDENTIFIER, "Expected register name in MOV,")
             self._advance()
             reg2 = self._peek()
             if reg2[0] == TK_LBRACKET:
@@ -719,9 +719,9 @@ class PVcpuAssembler:
             val = self._expect(TK_IDENTIFIER, "Expected Number,")
 
             if val[1].isdigit():
-                self._emit_inst(SUB, REGS[reg[1].lower()], REGS[reg[1].lower()], int(val[1]))
+                self._emit_inst(SUB, REGS[reg[1].lower()], REGS[reg[1].lower()], int(val[1]), REGDIR)
             else:
-                self._emit_inst(SUB, REGS[reg[1].lower()], REGS[val[1].lower()], 0)
+                self._emit_inst(SUB, REGS[reg[1].lower()], REGS[val[1].lower()], 0, REGREG)
         elif typ == TK_ADD:
             reg = self._expect(TK_IDENTIFIER, "Expected register name,")
             self._advance()

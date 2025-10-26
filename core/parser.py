@@ -343,6 +343,7 @@ class Parser:
         if typ == TOK_GLOBAL:
             glb = True
             self.advance() # consume 'global'
+            typ, val = self.peek()
 
         if typ == TOK_LET:
             self.advance()  # consume 'let'

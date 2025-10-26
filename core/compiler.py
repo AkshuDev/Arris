@@ -249,6 +249,23 @@ class ArrisCompiler64(): # Outputs NASM syntax but follows PVCpu registers (64-b
         self.rodata.append(f"{label}: db {', '.join(str(b) for b in s.encode())}, 0")
         return label
     
+    def add_literal_list(self, items) -> str:
+        # Convert items to bytes/values
+        db_values = []
+        for item in items:
+            if isinstance(item, parser.String):
+                db_values.extend(str(b) for b in item.value.encode())
+            elif isinstance(item, parser.Number):
+                db_values.append(str(item.value))
+            else:
+                raise Exception(f"Unsupported literal: {item}")
+        db_values.append("0")  # always null-terminate
+        
+        label = f"str{len(self.strings)}"
+        self.strings[label] = label
+        self.rodata.append(f"{label}: db {', '.join(db_values)}")
+        return label
+    
     def compile_expr(self, e:object):
         # Return semantics: many nodes set qG0 and return a Python value/label where appropriate.
         if isinstance(e, parser.Number):
@@ -377,6 +394,38 @@ class ArrisCompiler64(): # Outputs NASM syntax but follows PVCpu registers (64-b
                 init_val = NULL
                 if s.value and isinstance(s.value, parser.Number):
                     init_val = str(s.value.value)
+                elif s.value and isinstance(s.value, parser.String):
+                    special = False
+                    other_vals = []
+                    buf = ""
+                    for c in s.value.value:
+                        if special:
+                            if "n" == c:
+                                other_vals.append('"' + buf + '"')
+                                other_vals.append("10")
+                                other_vals.append("14")
+                                buf = ""
+                            elif ">" == c:
+                                other_vals.append('"' + buf + '"')
+                                other_vals.append("10")
+                                buf = ""
+                            elif "<" == c:
+                                other_vals.append('"' + buf + '"')
+                                other_vals.append("14")
+                                buf = ""
+                            special = False
+                            continue
+                        if "\\" == c:
+                            special = True
+                        buf += c
+                    other_vals.append('"' + buf + '"')
+                    self.data.append(f"{s.name} db {", ".join(other_vals)}, 0")
+                    init_val = s.value.value
+
+                    self.global_vars[s.name] = size_bytes
+                    self.global_vars_value[s.name] = init_val
+
+                    return
 
                 # choose directive for initialized vs uninitialized
                 if s.value:

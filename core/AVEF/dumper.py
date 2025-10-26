@@ -201,6 +201,13 @@ def pvcpu_avef_decoder(vaddr: int, data: bytes, labels: dict={}) -> tuple[str, i
 
     inst += debug_inst.get(op, "<unknown>").lower() + " "
 
+    if op == POPG:
+        inst += debug_regs.get(dest, "<unknown>").lower()
+        return (inst, 20)
+    elif op == PUSHI:
+        inst += debug_regs.get(src, "<unknown>").lower()
+        return (inst, 20)
+
     if mode == REGREG:
         inst += debug_regs.get(dest, "<unknown>").lower() + ", "
         inst += debug_regs.get(src, "<unknown>").lower()

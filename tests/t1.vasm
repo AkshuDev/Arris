@@ -1,7 +1,7 @@
 section .data
+myvar db "hi", 0
 section .bss
 section .rodata
-str0: db 104, 105, 0
 section .text
 global __arris__compilerinjected__main
 __arris__compilerinjected__main:
@@ -115,7 +115,7 @@ print_stdout:
 main:
 	push qSF
 	mov qSF, qSP
-	lea qG0, [str0]
+	mov, qG0, [myvar]
 	mov qG1, qG0
 	call print_stdout
 	mov qG0, 0

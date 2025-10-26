@@ -28,14 +28,32 @@ static inline void int_os(AVEF_State* state, uint16_t n, AVEF_Instruction* i) {
     } else if (syscall_no == 1) { 
         return;
     } else if (syscall_no == 2) {
+        uint64_t fd = state->REGS[QG1_REG];
         uint64_t len = state->REGS[QG2_REG];
         uint64_t addr = state->REGS[QG3_REG];
-        char msg[len];
-        memcpy(&msg, state->memory + addr, len);
-        fprintf(stdout, "%s", msg);
+        
+        if (addr + len > state->mem_size) {
+            fprintf(stderr, "AVM OS - write: invalid address range %llu + %llu\n", (unsigned long long)addr, (unsigned long long)len);
+            return;
+        }
+
+        char* buf = malloc(len + 1);
+        if (!buf) {
+            fprintf(stderr, "AVM OS - write: allocation failed\n");
+            return;
+        }
+
+        memcpy(buf, state->memory + addr, len);
+        buf[len] = '\0'; // ensure null-termination
+
+        FILE* target = (fd == 2) ? stderr : stdout;
+        fwrite(buf, 1, len, target);
+        fflush(target);
+
+        free(buf);
         return;
     } else {
-        printf("WARNING [AVM OS]: Unknown OS Call!\n");
+        printf("WARNING [AVM OS]: Unknown OS Call: [%hu]!\n", syscall_no);
         return;
     }
 }

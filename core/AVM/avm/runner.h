@@ -6,13 +6,74 @@
 #include <instset.h>
 #include <avef.h>
 
-#define REG_NUM 62
-#define QSP_REG 60
-#define QSF_REG 61
-#define QG0_REG 43
-#define QG1_REG 44
-#define QG2_REG 45
-#define QG3_REG 46
+#define REG_NUM 65
+
+typedef enum {
+    G0_REG = 62,
+    G1_REG = 1,
+    G2_REG,
+    G3_REG,
+    G4_REG,
+    G5_REG,
+    G6_REG,
+    G7_REG,
+    G8_REG,
+    G9_REG,
+    G10_REG,
+    G12_REG = 12,
+    G13_REG,
+    G14_REG = 65,
+    WG0_REG = 17,
+    WG1_REG,
+    WG2_REG,
+    WG3_REG,
+    WG4_REG,
+    WG5_REG,
+    WG6_REG,
+    WG7_REG,
+    WG8_REG,
+    WG9_REG,
+    WG10_REG,
+    WG12_REG,
+    WG13_REG,
+    WG14_REG = 64,
+    DG0_REG = 30,
+    DG1_REG,
+    DG2_REG,
+    DG3_REG,
+    DG4_REG,
+    DG5_REG,
+    DG6_REG,
+    DG7_REG,
+    DG8_REG,
+    DG9_REG,
+    DG10_REG,
+    DG12_REG,
+    DG13_REG,
+    DG14_REG = 63,
+    QG0_REG = 43,
+    QG1_REG,
+    QG2_REG,
+    QG3_REG,
+    QG4_REG,
+    QG5_REG,
+    QG6_REG,
+    QG7_REG,
+    QG8_REG,
+    QG9_REG,
+    QG10_REG,
+    QG12_REG,
+    QG13_REG,
+    QG14_REG = 62,
+    SP_REG = 15,
+    SF_REG,
+    WSP_REG = 56,
+    WSF_REG,
+    DSP_REG,
+    DSF_REG,
+    QSP_REG,
+    QSF_REG
+} Registers;
 
 #define SEC_R (1 << 0)
 #define SEC_W (1 << 1)
@@ -21,13 +82,18 @@
 #define SEC_META (1 << 4)
 #define SEC_ALLOC (1 << 5)
 
-#define REGREG 1
-#define MEMREG 2
-#define MEMDIR 3
-#define REGDIR 4
-#define MEMONLY 5
-#define IMMONLY 6
 #define NULL_ 0
+
+typedef enum {
+    REGREG = 1,
+    MEMREG,
+    MEMDIR,
+    REGDIR,
+    MEMONLY,
+    IMMONLY,
+    REGMEM,
+    REGMEMREG
+} Inst_Modes;
 
 struct AVEF_State;
 typedef void (*IntHandler) (struct AVEF_State* state, uint16_t int_no, AVEF_Instruction* inst);

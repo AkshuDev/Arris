@@ -7,6 +7,8 @@ MEMDIR = 3 # Memory into/to Register
 REGDIR = 4 # Imm into/to Register
 MEMONLY = 5 # Memory only
 IMMONLY = 6 # Imm only
+REGMEM = 7 # Register value into/to Memory
+REGMEMREG = 8 # Register2 value into/to Memory + Register1
 NULL = 0 # NULL
 
 # Debug
@@ -17,6 +19,8 @@ debug_modes = {
     REGDIR: "REGDIR",
     MEMONLY: "MEMONLY",
     IMMONLY: "IMMONLY",
+    REGMEM: "REGMEM",
+    REGMEMREG: "REGMEMREG",
     NULL: "NULL"
 }
 

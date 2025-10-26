@@ -1,5 +1,7 @@
 @inc "stdlib/stdio.alib"
 
+global let char* myvar = "hi"
+
 func int main() {
-    print_stdout("hi")
+    print_stdout(myvar)
 }

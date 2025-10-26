@@ -13,6 +13,8 @@ int parse_inst(AVEF_State* vm, AVEF_Instruction inst) {
     uint32_t src = inst.src;
     uint32_t dest = inst.dest;
 
+    uint8_t write_tomem = 0;
+
     if (src > REG_NUM || dest > REG_NUM) {
         printf("Value in code, disguised as register, [%d]/[%d] is greater than Register count!\n", src, dest);
         return 1;
@@ -23,7 +25,7 @@ int parse_inst(AVEF_State* vm, AVEF_Instruction inst) {
             src_val = vm->REGS[src];
             break;
         case MEMREG:
-            src_val = vm->REGS[src] + inst.imm;
+            src_val = read_u64(vm, vm->REGS[src] + inst.imm);
             if (src_val == -1) return 1;
             break;
         case MEMDIR:
@@ -40,6 +42,16 @@ int parse_inst(AVEF_State* vm, AVEF_Instruction inst) {
         case IMMONLY:
             src_val = inst.imm;
             break;
+        case REGMEM:
+            src_val = vm->REGS[src];
+            write_tomem = 1;
+            dest_val = vm->REGS[dest];
+            break;
+        case REGMEMREG:
+            src_val = vm->REGS[src];
+            write_tomem = 1;
+            dest_val = vm->REGS[dest] + inst.imm;
+            break;
         case NULL_:
             src_val = 0;
             break;
@@ -51,6 +63,10 @@ int parse_inst(AVEF_State* vm, AVEF_Instruction inst) {
     // Execute
     switch(inst.instruction) {
         case MOV:
+            if (write_tomem == 1) {
+                write_u64(vm, dest_val, src_val);
+                break;
+            }
             vm->REGS[dest] = src_val;
             break;
         case STOREL:
@@ -67,8 +83,10 @@ int parse_inst(AVEF_State* vm, AVEF_Instruction inst) {
             break;
         case SUB:
             vm->REGS[dest] -= src_val;
+            break;
         case MUL:
             vm->REGS[dest] *= src_val;
+            break;
         case CQO:
             {
                 int64_t val = (int64_t)vm->REGS[QG0_REG];
@@ -81,8 +99,10 @@ int parse_inst(AVEF_State* vm, AVEF_Instruction inst) {
             if (err) { raise_int(vm, 0x00, &inst); break; } // #DE
             vm->REGS[QG0_REG] = (uint64_t)q; // quotient -> RAX
             vm->REGS[QG3_REG] = (uint64_t)r; // remainder -> RDX
+            break;
         case XOR:
             vm->REGS[dest] ^= src_val;
+            break;
         case PUSHI:
             vm->REGS[QSP_REG] -= 8;
             write_u64(vm, vm->REGS[QSP_REG], vm->REGS[src]);
