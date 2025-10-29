@@ -10,13 +10,31 @@ import copy
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from instructionSet import *
 from phardwareitk.Memory.Memory import Memory as PHWMemory
+from phardwareitk.Extensions.HyperOut import printH
+from phardwareitk.Extensions import TextFont, Color
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import errorHandler
 
 # Asm error alias
-def asm_error(*args):
-    errorHandler.assemblerError("".join(args))
+def asm_error(*args, line=None, col=None, src=None):
+    printH("\nAssembler Error:\n", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+
+    if src and line is not None:
+        src_lines = src.splitlines()
+        if 1 <= line <= len(src_lines):
+            # show 1 line before and after for context
+            start = max(0, line - 2)
+            end = min(len(src_lines), line + 1)
+            for ln in range(start, end):
+                prefix = ">" if (ln + 1) == line else " "
+                line_color = Color("red") if (ln + 1) == line else Color("gray")
+                printH(f"{prefix} {ln + 1:4d} | {src_lines[ln]}\n", FontEnabled=True, Font=TextFont(font_color=line_color))
+                if (ln + 1) == line and col is not None:
+                    caret_offset = len(f"{prefix} {ln + 1:4d} | ") + col + 3
+                    printH(" " * caret_offset + "^\n", FontEnabled=True, Font=TextFont(Bold=True, font_color=Color("red")))
+    printH(f"Error: {"".join(*args)}\n", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
+    sys.exit(1)
 
 # Token IDs
 TK_EOF = -1
@@ -170,6 +188,8 @@ class Lexer:
         self.code = code
         self.i = 0
         self.n = len(code)
+        self.line = 1
+        self.col = 0
         self.tokens: List[Tuple[int, str]] = []
 
     def _peek(self) -> str:
@@ -180,7 +200,7 @@ class Lexer:
 
     def _advance(self) -> str:
         self.i += 1
-        return self._get()
+        tk = self._get()
 
     def _get_line_tail(self) -> str:
         start = self.i
@@ -221,7 +241,8 @@ class Lexer:
         return self.code[start:self.i]
 
     def _emit(self, typ: int, val: str):
-        self.tokens.append((typ, val))
+        self.tokens.append((typ, val, self.line, self.col))
+        self.col += len(val)
 
     def _handle_word(self):
         start = self.i
@@ -279,7 +300,7 @@ class Lexer:
             case _:
                 self._emit(TK_IDENTIFIER, s)
 
-    def tokenize(self) -> List[Tuple[int, str]]:
+    def tokenize(self) -> List[Tuple[int, str, int, int]]:
         while self.i < self.n:
             c = self._get()
 
@@ -287,7 +308,8 @@ class Lexer:
                 self.i += 1
                 continue
             if c == "\n":
-                self._emit(TK_ENDL, c); self.i += 1; continue
+                self.line += 1; self.col = 0
+                self._emit(TK_ENDL, c); self.i += 1
                 continue
 
             if c == ";" and self._peek() == ";":  # ;;special (e.g., runlang)
@@ -335,7 +357,7 @@ class Lexer:
                 self._handle_word()
                 continue
 
-            asm_error(f"Unknown character '{c}' at {self.i}")
+            asm_error(f"Unknown character '{c}'", src=self.code, line=self.line, col=self.col)
         return self.tokens
 
 # Utils
@@ -348,7 +370,7 @@ def parse_int(val: str) -> int:
     if v.startswith("'") and v.endswith("'") and len(v) == 3:
         return ord(v[1])
     if v.startswith('"') and v.endswith('"'):
-        asm_error("String where integer immediate expected")
+        asm_error("String where integer immediate expected!")
     return int(v, 10)
 
 def strip_quotes(s: str) -> str:
@@ -395,6 +417,7 @@ class PVcpuAssembler:
         self.entry_point: int = 0
         self.tok = 1
         self.line = 1
+        self.col = 0
         self.relocs: List[Dict] = []
         self.data_offset = 0
         
@@ -403,22 +426,29 @@ class PVcpuAssembler:
         self.align: int = 0x1000
 
     # Token Helpers
-    def _peek(self, k=0) -> Tuple[int, str]:
+    def _peek(self, k=0) -> Tuple[int, str, int, int]:
         j = self.i + k
         if j >= self.n:
             return (-1, "")
         return self.tokens[j]
 
-    def _advance(self) -> Tuple[int, str]:
+    def _advance(self) -> Tuple[int, str, int, int]:
         t = self._peek(0)
         self.i += 1
         self.tok += 1
+        self.line = t[2]
+        self.col = [3]
         return t
 
-    def _expect(self, typ: int, msg: str) -> Tuple[int, str]:
+    def _expect(self, typ: int, msg: str) -> Tuple[int, str, int, int]:
         t = self._advance()
         if t[0] != typ:
-            asm_error(msg + f" (got '{t[1]}' at line: {self.line}, token: {self.tok})")
+            asm_error(
+                msg + f" (got '{t[1]}')",
+                line=t[2],
+                col=t[3],
+                src=self.asm
+            )
         return t
 
     def _at_eof(self) -> bool:
@@ -467,7 +497,7 @@ class PVcpuAssembler:
         if label:
             is_global = label["global_"]
             if not is_global:
-                asm_error(f"Label: {name} is defined previously!")
+                asm_error(f"Label: {name} is defined previously!", src=self.asm, line=self.line, col=self.col)
 
         self.labels[name] = {
             "section": section,
@@ -509,7 +539,7 @@ class PVcpuAssembler:
             w = 0x32.to_bytes(2, "little")
         elif width == TK_DQ:
             w = 0x64.to_bytes(2, "little")
-        else: asm_error("Unknown Data Width: ", width)
+        else: asm_error("Unknown Data Width: ", width, src=self.asm, line=self.line, col=self.col)
 
         value = value.encode("utf-8") + b"\x00"
 
@@ -535,7 +565,7 @@ class PVcpuAssembler:
         if opr == TK_RBRACKET:
             return (MEMDIR, lbrac, reg, opr)
 
-        if not opr[0] in [TK_PLUS, TK_MINUS]: asm_error("Expected -/+ only,")
+        if not opr[0] in [TK_PLUS, TK_MINUS]: asm_error("Expected -/+ only", src=self.asm, line=self.line, col=self.col)
 
         val = self._expect(TK_IDENTIFIER, "Expected number,")
         rbrac = self._expect(TK_RBRACKET, "'[' Never closed!")
@@ -556,7 +586,7 @@ class PVcpuAssembler:
         elif isinstance(obj, bytes):
             return obj
         else:
-            asm_error(f"Tried to convert value: {obj} to bytes!")
+            asm_error(f"Tried to convert value: {obj} to bytes!", src=self.asm, line=self.line, col=self.col)
 
     def _get_width(self, tok:tuple[int, str]) -> int:
         token = tok[0]
@@ -569,7 +599,7 @@ class PVcpuAssembler:
         elif token == TK_DQ:
             return 8
         else:
-            asm_error(f"Unexpected data size: {tok[1]}")
+            asm_error(f"Unexpected data size: {tok[1]}", src=self.asm, line=self.line, col=self.col)
 
     # Assembler singlular instructions
     def assemble_inst(self, inst:tuple[int, str]) -> None:
@@ -577,13 +607,14 @@ class PVcpuAssembler:
 
         typ = inst[0]
         val = inst[1]
+        line = inst[2]
+        char = inst[3]
         
         if val == "": return
 
         # Special here
         if typ == TK_ENDL:
             self.tok = 1
-            self.line += 1
             return
         elif typ == TK_SPECIAL and "@Runlang: " in val:
             code = ""
@@ -635,7 +666,7 @@ class PVcpuAssembler:
                 self._mklabel(val, current_sec, False, False, 0, len(self.sections[current_sec]["bytes"]))
             elif (nxt[0] in [TK_DB, TK_DW, TK_DD, TK_DQ]) or (nxt[0] == TK_LABEL and self._peek()[0] in [TK_DB, TK_DW, TK_DD, TK_DQ]):
                 if not current_sec == ".data" and not current_sec == ".rodata":
-                    asm_error(f"Tried to define data outside of the .data/.rodata section! Error in {current_sec} section.")
+                    asm_error(f"Tried to define data outside of the .data/.rodata section! Error in {current_sec} section.", src=self.asm, line=self.line, col=self.col)
                 width = 8
                 if nxt[0] == TK_LABEL: 
                     width = self._get_width(self._advance())
@@ -644,7 +675,7 @@ class PVcpuAssembler:
                 value = self._advance()
 
                 if not value[0] in [TK_IDENTIFIER]:
-                    asm_error("Unknown Assignment value: ", value[1])
+                    asm_error("Unknown Assignment value: ", value[1], src=self.asm, line=self.line, col=self.col)
 
                 final_value = self._to_bytes(value[1], width)
                 over = False
@@ -659,10 +690,10 @@ class PVcpuAssembler:
                         over = True
                         continue
                     if not value[0] == TK_COMMA:
-                        asm_error(f"Multiple bytes defined without ',' (comma): {value[1]}")
+                        asm_error(f"Multiple bytes defined without ',' (comma): {value[1]}", src=self.asm, line=self.line, col=self.col)
                 self._mklabel(val, current_sec, True, False, width)
             else: 
-                asm_error("Unknown Instruction: ", val)
+                asm_error("Unknown Instruction: ", val, src=self.asm, line=self.line, col=self.col)
                 return
         elif typ == TK_MOV:
             tok = self._peek()
@@ -781,12 +812,12 @@ class PVcpuAssembler:
                     else:
                         off -= int(nxt2[1])
                 else:
-                    asm_error(f"Expected a number, got {nxt2[1]} instead!")
+                    asm_error(f"Expected a number, got {nxt2[1]} instead!", src=self.asm, line=self.line, col=self.col)
             reloc_at = len(self.sections[self.current_section]["bytes"])
             self._add_reloc(src[1], src[1], reloc_at + 10, 8, off) # 8 byte addr
             self._emit_inst(LEA, REGS[dest[1].lower()], 0, 0, IMMONLY)
         else:
-            asm_error("Unknown instruction: '", val, f"' at line: {self.line}, token: {self.tok}")
+            asm_error("Unknown instruction: '", val, src=self.asm, line=self.line, col=self.col)
 
     def assemble(self) -> bytes:
         while True:

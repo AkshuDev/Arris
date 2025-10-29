@@ -1,5 +1,5 @@
 section .data
-myvar db "hi", 0
+myvar db "hi" 0
 section .bss
 section .rodata
 section .text
@@ -115,7 +115,7 @@ print_stdout:
 main:
 	push qSF
 	mov qSF, qSP
-	mov, qG0, [myvar]
+	mov qG0, [myvar]
 	mov qG1, qG0
 	call print_stdout
 	mov qG0, 0
