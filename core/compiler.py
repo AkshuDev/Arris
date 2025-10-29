@@ -285,7 +285,7 @@ class ArrisCompiler64(): # Outputs NASM syntax but follows PVCpu registers (64-b
                 len_bytes = self.global_vars[e.name]
                 prefix = reg_prefix_for_bits((len_bytes if len_bytes > 0 else 8) * 8)
                 if prefix == "q":
-                    self.text.append(f"\tmov, qG0, [{e.name}]")
+                    self.text.append(f"\tmov qG0, [{e.name}]")
                 else:
                     self.text.append(f"\tmov {prefix}G0, [{e.name}]")
                     self.text.append(f"\tmov qG0, {prefix}G0")

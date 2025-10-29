@@ -1,5 +1,5 @@
 section .data
-myvar db "hi" 0
+myvar db "hi", 0
 section .bss
 section .rodata
 section .text

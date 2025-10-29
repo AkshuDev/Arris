@@ -4,6 +4,9 @@ from instructionSet import *
 from typing import *
 import string
 
+from phardwareitk.Extensions.HyperOut import printH
+from phardwareitk.Extensions import TextFont, Color
+
 archTable = {
     0xA0A0: "PVCpu-Avef (Pheonix-Virtual-CPU-Avef)",
     0xA0A1: "PVCpu (Pheonix-Virtual-CPU)",
@@ -35,6 +38,7 @@ def _read_sections(av: bytes, header: dict):
     sections = []
     sec_off = header["sec_table_offset"]
     sec_cnt = header["sec_count"]
+
     # choose entry size
     entry_sz = SECTION_SIZE 
     for i in range(sec_cnt):
@@ -45,6 +49,7 @@ def _read_sections(av: bytes, header: dict):
             fields = av[off:off+SECTION_SIZE]
             name, vaddr, file_off, size, flags, align = struct.unpack(SECTION_FMT, fields)
             name = name.decode("utf-8").strip("\x00")
+            
             sections.append({
                 "name": name,
                 "vaddr": vaddr,
@@ -53,20 +58,15 @@ def _read_sections(av: bytes, header: dict):
                 "flags": flags,
                 "align": align,
             })
-    return sections
 
-def _get_labels(data: Optional[bytes]) -> Optional[dict]:
-    if not data: return None
-    
-    idx = 0
-    return None # TODO: Make it
+    return sections
 
 def dump_avef(av: bytes,
               better: bool = False,
               bytes_per_line: int = 20,
-              show_sections: Optional[list] = [".text", ".data", ".bss", ".rodata"],
+              show_sections: Optional[list] = [".text", ".data", ".bss", ".rodata", ".symbols"],
               symbols: Optional[Dict[int, str]] = None,
-              decoder: Optional[Callable[[int, bytes, dict], Tuple[str, int]]] = None):
+              decoder: Optional[Callable[[int, bytes, dict], Tuple[str, str, int]]] = None):
     """
     av: raw AVEF bytes
     better: if True, collapse runs of zero-lines, print labels from symbols dict, attempt decode using decoder.
@@ -77,6 +77,11 @@ def dump_avef(av: bytes,
              If mnemonic_str_or_None is not None, the dumper will print that mnemonic on its own line and skip those bytes.
     """
     hdr = _read_header(av)
+
+    keyword_font = TextFont(font_color=Color("neon-red"), Bold=True)
+    inst_font = TextFont(font_color=Color("light-cyan-special"))
+    symbol_font = TextFont(font_color=Color("light-gray"), Bold=True)
+
     print("AVEF Header:")
     print(f"  Magic: {hdr['magic']!r}")
     print(f"  Version: 0x{hdr['version']:04x}")
@@ -89,7 +94,7 @@ def dump_avef(av: bytes,
     print()
 
     sections = _read_sections(av, hdr)
-    #labels = _get_labels(av[sections[".labels"]["file_offset"]:sections[".labels"]["file_offset"] + sections[".labels"]["size"]] if ".labels" in sections else None)
+
     labels = None
     # filter
     if show_sections:
@@ -130,19 +135,42 @@ def dump_avef(av: bytes,
         idx = 0
         last_was_zeros = False
         while idx < len(data):
+            if name == ".symbols":
+                name = b""
+                remaining = data[idx:]
+                for i in range(len(remaining)):
+                    b = remaining[i:i+1]
+                    name += b
+                    if b == b"\x00":
+                        break
+                idx += len(name); addr += len(name)
+                name_str = name.decode("utf-8")
+                section = int.from_bytes(data[idx:idx + 4]); idx += 4; addr += 4
+                location = int.from_bytes(data[idx: idx + 8]); idx += 8; addr += 8
+                size = int.from_bytes(data[idx:idx + 4]); idx += 4; addr += 4
+                binding = int.from_bytes(data[idx: idx + 1]); idx += 1; addr += 1
+                labels = {location: name_str}
             # if decoder provided and better mode: try to decode an instruction at this vaddr
-            if decoder is not None and name not in [".rodata", ".data"]:
+            if decoder is not None and name not in [".rodata", ".data", ".symbols"]:
                 # pass the remaining bytes starting at this vaddr (virtual map)
                 remaining = data[idx:]
                 decoded = decoder(addr, remaining, labels)
                 if decoded:
-                    mnemonic, used = decoded
-                    if mnemonic is not None and used > 0:
+                    keyword, mnemonic, used = decoded
+                    if keyword is not None and (mnemonic is not None and used > 0):
                         # print label if exists
                         if symbols and addr in symbols:
-                            print(f"{symbols[addr]}:")
-                        # print address + mnemonic
-                        print(f"  0x{addr:08x}:    {mnemonic}")
+                            if better:
+                                printH(f"{symbols[addr]}:", FontEnabled=True, Font=symbol_font)
+                            else:
+                                print(f"{symbols[addr]}:")
+                        # print address + keyword + mnemonic
+                        if better:
+                            printH(f"  0x{addr:08x}:\t", FontEnabled=True, Font=symbol_font, endl="")
+                            printH(f"{keyword} ", FontEnabled=True, Font=keyword_font, endl="")
+                            printH(f"{mnemonic}", FontEnabled=True, Font=inst_font)
+                        else:
+                            print(f"  0x{addr:08x}:\t{keyword} {mnemonic}")
                         idx += used
                         addr += used
                         last_was_zeros = False
@@ -169,7 +197,10 @@ def dump_avef(av: bytes,
 
             # print label if present at address
             if symbols and addr in symbols:
-                print(f"{symbols[addr]}:")
+                if better:
+                    printH(f"{symbols[addr]}:", FontEnabled=True, Font=symbol_font)
+                else:
+                    print(f"{symbols[addr]}:")
 
             # hex bytes grouped in 4s for readability
             hex_groups = []
@@ -186,27 +217,31 @@ def dump_avef(av: bytes,
 
         print()
 
-def pvcpu_avef_decoder(vaddr: int, data: bytes, labels: dict={}) -> tuple[str, int]:
+def pvcpu_avef_decoder(vaddr: int, data: bytes, labels: dict={}) -> tuple[str, str, int]:
     """
     PrePacked PVCpu-AVEF decoder
     """
     labels = labels if labels else {}
-    if len(data) < 1: return ("<cannot decode>", 20)
+    if len(data) < 1: return ("", "<cannot decode>", 20)
     op = int.from_bytes(data[:2], "little")
     src = int.from_bytes(data[2:6], "little")
     dest = int.from_bytes(data[6:10], "little")
     imm = int.from_bytes(data[10:18], "little")
     mode = int.from_bytes(data[18:20], "little")
     inst = f"{labels[vaddr]}: " if vaddr in labels else ""
+    keyword = ""
 
-    inst += debug_inst.get(op, "<unknown>").lower() + " "
+    keyword = debug_inst.get(op, "<unknown>").lower() + " "
 
     if op == POPG:
         inst += debug_regs.get(dest, "<unknown>").lower()
-        return (inst, 20)
+        return (keyword, inst, 20)
     elif op == PUSHI:
         inst += debug_regs.get(src, "<unknown>").lower()
-        return (inst, 20)
+        return (keyword, inst, 20)
+    elif op == CALL or op == INT:
+        inst += str(hex(imm))
+        return (keyword, inst, 20)
 
     if mode == REGREG:
         inst += debug_regs.get(dest, "<unknown>").lower() + ", "
@@ -224,10 +259,14 @@ def pvcpu_avef_decoder(vaddr: int, data: bytes, labels: dict={}) -> tuple[str, i
         if imm in labels: inst += f"\t{labels[imm]}"
     elif mode == IMMONLY:
         inst += str(imm)
+    elif mode == REGMEM:
+        inst += "[" + str(hex(imm)) + "], " + debug_regs.get(src, "<unknown>").lower()
+    elif mode == REGMEMREG:
+        inst += "[" + debug_regs.get(dest, "unknown").lower() + " + " + str(hex(imm)) + "], " + debug_regs.get(src, "<unknown>").lower()
     elif mode == NULL:
         pass
     else:
         inst += "<cannot decode>"
 
-    return (inst, 20)
+    return (keyword, inst, 20)
 

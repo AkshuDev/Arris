@@ -31,7 +31,7 @@ def asm_error(*args, line=None, col=None, src=None):
                 line_color = Color("red") if (ln + 1) == line else Color("gray")
                 printH(f"{prefix} {ln + 1:4d} | {src_lines[ln]}\n", FontEnabled=True, Font=TextFont(font_color=line_color))
                 if (ln + 1) == line and col is not None:
-                    caret_offset = len(f"{prefix} {ln + 1:4d} | ") + col + 3
+                    caret_offset = len(f"{prefix} {ln + 1:4d} | ") + col
                     printH(" " * caret_offset + "^\n", FontEnabled=True, Font=TextFont(Bold=True, font_color=Color("red")))
     printH(f"Error: {"".join(*args)}\n", FontEnabled=True, Font=TextFont(font_color=Color("red"), Bold=True))
     sys.exit(1)
@@ -200,25 +200,30 @@ class Lexer:
 
     def _advance(self) -> str:
         self.i += 1
+        self.col += 1
         tk = self._get()
 
     def _get_line_tail(self) -> str:
         start = self.i
         while self.i < self.n and self.code[self.i] != "\n":
             self.i += 1
+            self.col += 1
         return self.code[start:self.i]
 
     def _string_literal(self) -> str:
         # assumes current char == '"'
         self.i += 1
+        self.col += 1
         out = []
         while self.i < self.n:
             c = self.code[self.i]
             if c == '"':
                 self.i += 1
+                self.col += 1
                 break
             out.append(c)
             self.i += 1
+            self.col += 1
         return "".join(out)
 
     def _int_literal(self) -> str:
@@ -229,25 +234,28 @@ class Lexer:
             start = self.i
             while self.i < self.n and self.code[self.i].lower() in "0123456789abcdef":
                 self.i += 1
+                self.col += 1
             return "0x" + self.code[start:self.i]
         if self.code.startswith("0b", self.i) or self.code.startswith("0B", self.i):
             self.i += 2
             start = self.i
             while self.i < self.n and self.code[self.i] in "01":
                 self.i += 1
+                self.col += 1
             return "0b" + self.code[start:self.i]
         while self.i < self.n and self.code[self.i].isdigit():
             self.i += 1
+            self.col += 1
         return self.code[start:self.i]
 
     def _emit(self, typ: int, val: str):
         self.tokens.append((typ, val, self.line, self.col))
-        self.col += len(val)
 
     def _handle_word(self):
         start = self.i
         while self.i < self.n and self.code[self.i] in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._@":
             self.i += 1
+            self.col += 1
         s = self.code[start:self.i]
         s_low = s.lower()
         match s_low:
@@ -306,6 +314,7 @@ class Lexer:
 
             if c in " \t\r":
                 self.i += 1
+                self.col += 1
                 continue
             if c == "\n":
                 self.line += 1; self.col = 0
@@ -323,27 +332,27 @@ class Lexer:
                 continue
 
             if c == "+":
-                self._emit(TK_PLUS, c); self.i += 1; continue
+                self._emit(TK_PLUS, c); self.i += 1; self.col += 1; continue
             if c == "-":
-                self._emit(TK_MINUS, c); self.i += 1; continue
+                self._emit(TK_MINUS, c); self.i += 1; self.col += 1; continue
             if c == "*":
-                self._emit(TK_ASTERIK, c); self.i += 1; continue
+                self._emit(TK_ASTERIK, c); self.i += 1; self.col += 1; continue
             if c == "/":
-                self._emit(TK_FSLASH, c); self.i += 1; continue
+                self._emit(TK_FSLASH, c); self.i += 1; self.col += 1; continue
             if c == "\\":
-                self._emit(TK_BSLASH, c); self.i += 1; continue
+                self._emit(TK_BSLASH, c); self.i += 1; self.col += 1; continue
             if c == ",":
-                self._emit(TK_COMMA, c); self.i += 1; continue
+                self._emit(TK_COMMA, c); self.i += 1; self.col += 1; continue
             if c == "[":
-                self._emit(TK_LBRACKET, c); self.i += 1; continue
+                self._emit(TK_LBRACKET, c); self.i += 1; self.col += 1; continue
             if c == "]":
-                self._emit(TK_RBRACKET, c); self.i += 1; continue
+                self._emit(TK_RBRACKET, c); self.i += 1; self.col += 1; continue
             if c == "(":
                 self._emit(TK_LPAR, c); self.i += 1; continue
             if c == ")":
-                self._emit(TK_RPAR, c); self.i += 1; continue
+                self._emit(TK_RPAR, c); self.i += 1; self.col += 1; continue
             if c == ":":
-                self._emit(TK_LABEL, c); self.i += 1; continue
+                self._emit(TK_LABEL, c); self.i += 1; self.col += 1; continue
             if c == '"':
                 s = self._string_literal()
                 # We’ll emit as TK_IDENTIFIER with quotes kept out—handled by data directives
@@ -391,7 +400,7 @@ class PVcpuAssembler:
         
         if self.tokens[len(self.tokens) - 1][1] == "":
             self.tokens.pop(len(self.tokens) - 1)
-        self.tokens.append((TK_EOF, ""))
+        self.tokens.append((TK_EOF, "", -1, -1))
         
         self.i = 0
         self.n = len(self.tokens)
@@ -437,7 +446,7 @@ class PVcpuAssembler:
         self.i += 1
         self.tok += 1
         self.line = t[2]
-        self.col = [3]
+        self.col = t[3]
         return t
 
     def _expect(self, typ: int, msg: str) -> Tuple[int, str, int, int]:
@@ -559,10 +568,10 @@ class PVcpuAssembler:
 
     def _get_bracket_data(self) -> Tuple:
         lbrac = self._expect(TK_LBRACKET, "Expected '[',")
-        reg = self._expect(TK_IDENTIFIER, "Expected register name,")
+        reg = self._expect(TK_IDENTIFIER, "Expected register/identifier,")
         opr = self._advance()
 
-        if opr == TK_RBRACKET:
+        if opr[0] == TK_RBRACKET:
             return (MEMDIR, lbrac, reg, opr)
 
         if not opr[0] in [TK_PLUS, TK_MINUS]: asm_error("Expected -/+ only", src=self.asm, line=self.line, col=self.col)
@@ -646,7 +655,6 @@ class PVcpuAssembler:
         if typ == TK_SECTION:
             sec = self._expect(TK_IDENTIFIER, "Expected Section Name,")[1]
             current_sec = sec
-            print("Inside section:", sec)
             self.current_section = sec
             self._mksection_ifnpresent(sec, 0x0, 0x0, 0x0);
             return
@@ -677,20 +685,29 @@ class PVcpuAssembler:
                 if not value[0] in [TK_IDENTIFIER]:
                     asm_error("Unknown Assignment value: ", value[1], src=self.asm, line=self.line, col=self.col)
 
-                final_value = self._to_bytes(value[1], width)
                 over = False
+                final_value = b''
                 while not over:
                     if value[0] == TK_ENDL:
                         over = True
                     if value[0] == TK_COMMA:
                         value = self._advance()
-                    final_value += self._to_bytes(value[1], width)
+                    v = value[1]
+                    if value[1].startswith('"') and value[1].endswith('"'):
+                        v = value[1].replace('"', '')
+                    elif value[1].isdigit():
+                        v = int(value[1])
+                    else:
+                        asm_error(f"Unknown type of value: {value[1]}", src=self.asm, line=self.line, col=self.col)
+                    
+                    final_value += self._to_bytes(v, width)
                     value = self._advance()
                     if value[0] == TK_ENDL:
                         over = True
                         continue
                     if not value[0] == TK_COMMA:
                         asm_error(f"Multiple bytes defined without ',' (comma): {value[1]}", src=self.asm, line=self.line, col=self.col)
+
                 self._mklabel(val, current_sec, True, False, width)
             else: 
                 asm_error("Unknown Instruction: ", val, src=self.asm, line=self.line, col=self.col)
@@ -701,7 +718,10 @@ class PVcpuAssembler:
                 data = self._get_bracket_data()
                 self._advance()
                 if data[0] == MEMDIR:
-                    self._emit_inst(MOV, 0, REGS[self._expect(TK_IDENTIFIER, "Expected register name in M,")[1].lower()], int(data[2][1]), REGMEM)
+                    name = data[2][1]
+                    reloc_at = len(self.sections[self.current_section]["bytes"])
+                    self._add_reloc(name, name, reloc_at + 10, 8)
+                    self._emit_inst(MOV, 0, REGS[self._expect(TK_IDENTIFIER, "Expected register name in M,")[1].lower()], 0, REGMEM)
                 elif data[0] == MEMREG:
                     regsrc = self._expect(TK_IDENTIFIER, "Expected Register name in MO,")
                     reg2 = REGS[regsrc[1].lower()]
@@ -720,7 +740,10 @@ class PVcpuAssembler:
             if reg2[0] == TK_LBRACKET:
                 data = self._get_bracket_data()
                 if data[0] == MEMDIR:
-                    self._emit_inst(MOV, REGS[reg[1].lower()], 0, int(data[2][1]), MEMDIR)
+                    name = data[2][1]
+                    reloc_at = len(self.sections[self.current_section]["bytes"])
+                    self._add_reloc(name, name, reloc_at + 10, 8)
+                    self._emit_inst(MOV, REGS[reg[1].lower()], 0, 0, MEMDIR)
                 else:
                     imm = 0
                     if data[3][0] == TK_PLUS:
@@ -791,7 +814,6 @@ class PVcpuAssembler:
         elif typ == TK_CALL:
             label = self._expect(TK_IDENTIFIER, "Expected label,")
             label_name = label[1]
-            print("Adding Relocation for", label_name)
             reloc_at = len(self.sections[self.current_section]["bytes"])
             self._add_reloc(label_name, label_name, reloc_at + 10, 8) # 8-byte addr
             self._emit_inst(CALL, 0, 0, 0, IMMONLY)
@@ -831,7 +853,9 @@ class PVcpuAssembler:
     # Write AVEF
     def build_avef(self) -> bytes:
         # Assign file offsets after header + section table
-        # Sections order: text, rodata, data, bss  (bss has size but no file bytes)
+        # Sections order: text, rodata, data, bss  (bss has size but no file bytes), ...
+        self.build_symbol_section()
+
         ordered = [".text", ".rodata", ".data", ".bss"] + [s for s in self.sections.keys() if s not in (".text", ".rodata", ".data", ".bss")]
 
         sections_out: List[Tuple[int,int,int,int,int]] = []  # vaddr, file_off, size, flags, align
@@ -915,7 +939,6 @@ class PVcpuAssembler:
         # Resolve Relocs
         for reloc in self.relocs:
             label = self.labels[reloc["target"]] if reloc["target"] in self.labels else asm_error(f"{reloc["target"]} relocation not found!")
-            print("Relocating for:", reloc["name"])
             offset = reloc["offset"] if "offset" in reloc else 0
             bs = body_chunks[text_sec_i][1]
             pad_ = body_chunks[text_sec_i][0]
@@ -937,6 +960,23 @@ class PVcpuAssembler:
             out.extend(data)
 
         return bytes(out)
+
+    # Creates the symbol table
+    def build_symbol_section(self):
+        sym_bytes = bytearray()
+        for name, sym in self.labels.items():
+            sym_bytes.extend(name.encode('utf-8') + b"\x00")  # null-terminated name
+            sym_bytes.extend(self._to_bytes(sym['section'], 4))  # section index or vaddr
+            sym_bytes.extend(self._to_bytes(sym['location'], 8))  # offset
+            sym_bytes.extend(self._to_bytes(sym['size'], 4))
+            sym_bytes.extend(self._to_bytes(1 if sym.get('global_', False) else 0, 1))  # binding
+        self.sections['.symbols'] = {
+            "vaddr": 0x0,
+            "flags": SEC_META,
+            "align": 0x08,
+            "size": len(sym_bytes),
+            "bytes": sym_bytes
+        }
 
     # Special Function to load .avef into memory
     def load_into_memory(self, memory_obj:PHWMemory):
@@ -964,3 +1004,4 @@ class PVcpuAssembler:
                 asm_error("Memory object lacks write(addr, bytes) or write_bytes(addr, bytes)")
             write_fn(vaddr, chunk)
         return entry
+

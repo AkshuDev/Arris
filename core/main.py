@@ -24,7 +24,6 @@ compileOut:str = ""
 exitAfterCompile:bool = False
 asmOut:str = ""
 exitAfterAssembling:bool = False
-disassemble:bool = False
 assembled_output_dir_def:str = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../temp")
 assembled_output_def:str = os.path.join(assembled_output_dir_def, "aout.avef")
 
@@ -61,8 +60,6 @@ if __name__ == "__main__":
                 compileOut = v.split("=")[1]
             elif "--assembled-out" in v and len(v.split("=")) > 1:
                 asmOut = v.split("=")[1]
-            elif v == "--disassemble":
-                disassemble = True
             elif v == "--better-dump":
                 better_dump = True
             elif v == "-dump-avef" or v == "-avef-dump":
@@ -71,8 +68,7 @@ if __name__ == "__main__":
                 d = b""
                 with open(files[0], "rb") as f:
                     d = f.read()
-                better = True if better_dump and disassemble else False
-                dumper.dump_avef(d, better, decoder=dumper.pvcpu_avef_decoder)
+                dumper.dump_avef(d, better_dump, decoder=dumper.pvcpu_avef_decoder)
                 exit(0)
             elif v == "--exit-acompile": # Exit after compile
                 exitAfterCompile = True
