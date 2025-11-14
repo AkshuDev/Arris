@@ -1,190 +1,171 @@
-# Arris
 import os
 import sys
+import platform
+import argparse
+import subprocess
 
-import helpers
-import lexer
-import parser
-import compiler
+from . import lexer
+from . import parser
+from . import compiler
 
-from AVEF import Assembler, instructionSet
+TEMP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../temp")
+DEFAULT_COMPILED = os.path.join(TEMP_DIR, "aout.asm")
+DEFAULT_ASSEMBLED = os.path.join(TEMP_DIR, "aout.o")
+DEFAULT_BINARY = os.path.join(TEMP_DIR, "a.out")
 
-file_:str = ""
-code:str = ""
-debug:bool = False
-compile_:bool = False
-memsize:int = 1024 * 1024 # 1MB
-onlylex:bool = False
-lexout:bool = False
-parseout:bool = False
-exitAfterParsing:bool = False
-files:list = []
-compileMode:int = 64
-compileOut:str = ""
-exitAfterCompile:bool = False
-asmOut:str = ""
-exitAfterAssembling:bool = False
-assembled_output_dir_def:str = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../temp")
-assembled_output_def:str = os.path.join(assembled_output_dir_def, "aout.avef")
+SUPPORTED_ARCHS = ["x86_64"]
+SUPPORTED_BITS = ["64"]
 
-better_dump = False
+def init():
+    if not os.path.exists(TEMP_DIR):
+        os.mkdir(TEMP_DIR)
 
-avm_dir_path:str = os.path.join(os.path.dirname(os.path.abspath(__file__)), "AVM")
-avm_bin_path:str = os.path.join(avm_dir_path, "avm_bin")
-avm_path:str = os.path.join(avm_bin_path, "avm")
+def read_file(path: str) -> str:
+    if not os.path.exists(path):
+        sys.exit(f"Error: file '{path}' not found.")
+    with open(path, "r") as f:
+        return f.read()
+
+
+def write_file(path: str, data, binary=False):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    mode = "wb" if binary else "w"
+    with open(path, mode) as f:
+        f.write(data)
+
+
+def debug_print(debug, *args):
+    if debug:
+        print("[DEBUG]", *args)
+
+
+def run_lexer(code: str, debug=False, file=None):
+    debug_print(debug, "Running lexer...")
+    lex = lexer.Lexer(code, filename=file)
+    tokens = lex.tokenize()
+    debug_print(debug, f"Lexing complete. Tokens: {len(tokens)}")
+    return tokens
+
+
+def run_parser(tokens, code, include_runlang=True, arch="x86_64", bits=64, os_="linux", debug=False, file=None):
+    debug_print(debug, "Running parser...")
+    p = parser.Parser(tokens, code=code, include_runlang=include_runlang, architecture=arch, bits=bits, os_=os_, file=file)
+    stmts = p.parse()
+    debug_print(debug, "Parsing complete.")
+    return stmts
+
+
+def run_compiler(stmts, arch, os_name, code, debug=False, file=None, inc_stdlib=True, entry=None):
+    debug_print(debug, f"Compiling for architecture '{arch}'...")
+    if arch == "x86_64":
+        c = compiler.x86_64Compiler(stmts, code=code, os=os_name, file=file, add_stdlib=inc_stdlib, entry=entry)
+    else:
+        sys.exit(f"Unknown architecture: {arch}")
+    compiled = c.compile()
+    debug_print(debug, "Compilation complete.")
+    return compiled
+
+
+def assemble_and_link(infile, asmOut, outfile, os_name, debug=False, asm_assembler="nasm", debug_asm=False, entry=compiler._START):
+    debug_print(debug, "Assembling and linking...")
+    obj_file = DEFAULT_ASSEMBLED if not asmOut else asmOut
+
+    if not shutil.which(asm_assembler):
+        sys.exit(f"'{asm_assembler}' not found in the system, please install '{asm_assembler}'!")
+    
+    if not shutil.which("ld"):
+        sys.exit("'ld' not found in the system, please install 'ld'!")
+
+    try:
+        if asm_assembler == "as":
+            if not debug_asm:
+                subprocess.run(["as", infile, "-o", obj_file], check=True)
+            else:
+                subprocess.run(["as", infile, "-o", obj_file, "-g"], check=True)
+        elif asm_assembler == "nasm":
+            fmt = "elf64" if os_name != "windows" else "win64"
+            if not debug_asm:
+                subprocess.run(["nasm", "-f", fmt, infile, "-o", obj_file], check=True)
+            else:
+                subprocess.run(["nasm", "-f", fmt, infile, "-o", obj_file, "-g"], check=True)
+        else:
+            sys.exit(f"Sorry '{asm_assembler}' is unsupported! Please assemble it manually.")
+
+        if not debug_asm:
+            subprocess.run(["ld", obj_file, "-o", outfile, "-e", entry], check=True)
+        else:
+            subprocess.run(["ld", obj_file, "-o", outfile, "-e", entry, "-g"], check=True)
+        debug_print(debug, f"Linked binary written to {outfile}")
+    except subprocess.CalledProcessError as e:
+        sys.exit(f"Assembly or linking failed: {e}")
+    finally:
+        if os.path.exists(DEFAULT_ASSEMBLED):
+            os.remove(DEFAULT_ASSEMBLED)
+
+
+def main():
+    parser_ = argparse.ArgumentParser(description="Arris Build & Run Tool")
+    parser_.add_argument("input", help="Input source file")
+    parser_.add_argument("-o", help="Output path", required=False, metavar=("--output"))
+    parser_.add_argument("--debug", action="store_true", help="Enable debug mode")
+    parser_.add_argument("--compile", action="store_true", help="Compile to assembly only")
+    parser_.add_argument("-b", type=int, default=64, help=f"Bit mode ({', '.join(SUPPORTED_BITS)})", metavar="--bits")
+    parser_.add_argument("-cout", default="", help="Output path for compiled code", metavar=("--compiled-out"))
+    parser_.add_argument("-aout", default="", help="Output path for assembled binary", metavar=("--assembled-out"))
+    parser_.add_argument("-arch", default="x86_64", help=f"Target architecture ({', '.join(SUPPORTED_ARCHS)})", metavar=("--architecture"))
+    parser_.add_argument("-os", default=platform.system().lower(), help="Target OS platform", metavar=("--platform"))
+    parser_.add_argument("--no-runlang", action="store_true", help="Disable runlang inclusion")
+    parser_.add_argument("--only-lex", action="store_true", help="Run lexer only and exit")
+    parser_.add_argument("--only-parse", action="store_true", help="Run parser only and exit")
+    parser_.add_argument("--exit-after-compile", action="store_true", help="Exit after compile step")
+    parser_.add_argument("--exit-after-assemble", action="store_true", help="Exit after assemble step")
+    parser_.add_argument("--debug-output", action="store_true", help="Export symbol table into the output file")
+    parser_.add_argument("--no-inject-runtime", action="store_true", help="Do not inject runtime helpers such as __arris__compilerinjected__main")
+    parser_.add_argument("-e", help="Change default entry function", default="main", metavar=("--entry"))
+
+    args = parser_.parse_args()
+    debug = args.debug
+    code = read_file(args.input)
+
+    init()
+
+    tokens = run_lexer(code, debug, args.input)
+    if args.only_lex:
+        print(tokens)
+        return
+
+    stmts = run_parser(tokens, code, not args.no_runlang, args.arch, args.b, args.os, debug, args.input)
+    if args.only_parse:
+        print(stmts)
+        return
+
+    entry = None if not args.e else args.e
+
+    compiled = run_compiler(stmts, args.arch, args.os, code, debug, args.input, not args.no_inject_runtime, entry)
+    compile_out = args.cout or DEFAULT_COMPILED
+    if args.compile or args.exit_after_compile:
+        if args.cout == "stdout":
+            print(compiled)
+        else:
+            write_file(compile_out, compiled)
+            debug_print(debug, f"Compiled written to {compile_out}")
+        if args.exit_after_compile:
+            return
+
+    if not args.arch in SUPPORTED_ARCHS:
+        sys.exit(f"[{', '.join(SUPPORTED_ARCHS)}] architectures are supported.")
+
+    asm_out = args.aout or DEFAULT_BINARY
+    write_file(compile_out, compiled)
+    if entry and args.no_inject_runtime:
+        assemble_and_link(compile_out, asm_out, args.o, args.os, debug, "nasm", args.debug_output, entry)
+    else:
+        assemble_and_link(compile_out, asm_out, args.o, args.os, debug, "nasm", args.debug_output)
+    os.chmod(asm_out, 0o755)
+    debug_print(debug, "Running binary...")
+    subprocess.run([args.o])
+
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: [PROGRAM] <input file> [-<OPTIONS>]")
-        exit(1)
-    else:
-        for i, v in enumerate(sys.argv):
-            if i == 0:
-                continue
-
-            if v == "--debug":
-                debug = True
-            elif v == "--compile":
-                compile_ = True
-            elif "--memory" in v and len(v.split("=")) > 1:
-                memsize = helpers.ToInt(v.split("=")[1])
-            elif v == "--exit-alex":
-                onlylex = True
-            elif v == "--lex-out":
-                lexout = True
-            elif v == "--parse-out":
-                parseout = True
-            elif v == "--bits" and len(v.split("=")) > 1:
-                compileMode = helpers.ToInt(v.split("=")[1])
-            elif "--compiled-out" in v and len(v.split("=")) > 1:
-                compileOut = v.split("=")[1]
-            elif "--assembled-out" in v and len(v.split("=")) > 1:
-                asmOut = v.split("=")[1]
-            elif v == "--better-dump":
-                better_dump = True
-            elif v == "-dump-avef" or v == "-avef-dump":
-                from AVEF import dumper
-                
-                d = b""
-                with open(files[0], "rb") as f:
-                    d = f.read()
-                dumper.dump_avef(d, better_dump, decoder=dumper.pvcpu_avef_decoder)
-                exit(0)
-            elif v == "--exit-acompile": # Exit after compile
-                exitAfterCompile = True
-            elif v == "--exit-aassemble": # Exit after Assemble
-                exitAfterAssembling = True
-            elif v == "--exit-aparse": # Exit after Parse
-                exitAfterParsing = True
-            else:
-                file_ = v
-                if not os.path.exists(file_):
-                    print("File [%s] does not exist!", file_)
-                files.append(file_)
-                
-        if debug: print("MEMSIZE:", memsize, "bytes")
-
-        if len(files) == 0:
-            print("Usage: [PROGRAM] <input_files> [-<OPTIONS>]")
-            exit(1)
-
-        if onlylex:
-            if debug: print("Getting Code...")
-            with open(files[0], "r") as f:
-                f.seek(0)
-                code = f.read()
-            
-            if debug: print("Got Code!\nRunning lexer...")
-            lex = lexer.Lexer(code)
-            print("Tokens:\n", lex.tokenize())
-            exit(0)
-        
-        if debug: print("Getting code...")
-        with open(files[0], "r") as f:
-            f.seek(0)
-            code = f.read()
-        
-        if debug: print("Got Code!\nRunning Lexer")
-        lex = lexer.Lexer(code)
-        tokens = lex.tokenize()
-        if debug: "Lexer Finished!"
-
-        if lexout: print(tokens, "\n")
-        
-        if debug: print("Running Parser...")
-        parser_ = parser.Parser(tokens)
-        stmts = parser_.parse()
-        if debug: print("Parser Finished!")
-
-        if (parseout): print(stmts, "\n")
-        if (exitAfterParsing): exit(0)
-
-        if debug: print("Running Compiler...")
-        compiler_ = compiler.ArrisCompiler64(stmts)
-        
-        #if compileMode == 64:
-            #compiler_ = compiler.ArrisCompiler64(stmts)
-        #elif compileMode == 32:
-            #compiler_ = compiler.ArrisCompiler32(stmts)
-        #elif compileMode == 16:
-            #compiler_ = compiler.ArrisCompiler16(stmts)
-        #elif compileMode == 8:
-            #compiler_ = compiler.ArrisCompiler8(stmts)
-        
-        compiled = compiler_.compile()
-        if debug: print("Compiler Finished!")
-        if not compileOut == "" and not compileOut == "stdout":
-            with open(compileOut, "w") as f:
-                f.write(compiled)
-        elif compileOut == "stdout":
-            print(f"\nCompiled to Assembly:\n\n{compiled}")
-        
-        if (exitAfterCompile): exit(0)
-
-        if debug: print("Running Assembler (PVCpu Architecture)...")
-        assembler = Assembler.PVcpuAssembler(compiled)
-        assembled = assembler.assemble()
-        if debug: print("Assembled Code!")
-        if asmOut:
-            if asmOut == "stdout":
-                print(assembled.hex(" "))
-            else:
-                with open(asmOut, "wb") as f:
-                    f.write(assembled)
-        
-        if (exitAfterAssembling): exit(0)
-        
-        if debug: print("Running AVM (Arris Virtual Machine)...")
-        if not os.path.exists(avm_path):
-            print("AVM doesn't exist trying, checking for Makefile...")
-            if not os.path.exists(os.path.join(avm_dir_path, "Makefile")):
-                print("No Makefile found, please install AVM from github repository (https://github.com/AkshuDev/Arris)")
-                exit(1)
-            ret = os.system(f"make -C \"{avm_dir_path}\"")
-            if not ret == 0:
-                print("Makefile Failed!, please install AVM from github repository (https://github.com/AkshuDev/Arris)")
-                exit(1)
-            if not os.path.exists(avm_path): 
-                print("Failed to make AVM, please install AVM from github repository (https://github.com/AkshuDev/Arris)")
-        
-        memprovided = str(memsize)
-        debugprovided = ""
-        if debug: debugprovided = "-debug"
-        
-        if asmOut == "":
-            os.mkdir(assembled_output_dir_def)
-            with open(assembled_output_def, "wb") as f:
-                f.write(assembled)
-            
-            if debug: print("Command:", f"{avm_path} {assembled_output_def} -memsize {memprovided} {debugprovided}")
-        
-            os.system(f"{avm_path} {assembled_output_def} -memsize {memprovided} {debugprovided}")
-            os.remove(assembled_output_def)
-            os.rmdir(assembled_output_dir_def)
-        else:
-            if debug: print("Command:", f"{avm_path} {asmOut} -memsize {memprovided} {debugprovided}")
-            os.system(f"{avm_path} {asmOut} -memsize {memprovided} {debugprovided}")
-            
-        if debug: print("Finished Running AVM!")
-            
-        exit(0)
+    import shutil
+    main()

@@ -1,0 +1,49 @@
+{
+  "name": "arris-languagesupport",
+  "displayName": "Arris",
+  "description": "Language Support for Arris (Programming Language)",
+  "version": "0.0.1",
+  "publisher": "Pheonix Studios",
+  "engines": {
+    "vscode": "^1.105.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "arris",
+        "aliases": ["Arris", "arris"],
+        "extensions": [".arr", ".arris", ".alib", ".arrislib", ".arrlib"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "arris",
+        "scopeName": "source.arris",
+        "path": "./syntaxes/arris.tmLanguage.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.105.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.6.3",
+    "vsce": "^2.15.0"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}

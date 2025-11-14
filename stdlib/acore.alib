@@ -1,16 +1,27 @@
 func long __arris_syscall(long id, long a1, long a2, long a3, long a4, long a5) {
-    __vasm__ {
-        "mov qG0, \$\n"
-        "mov qG1, \$\n"
-        "mov qG2, \$\n"
-        "mov qG3, \$\n"
-        "mov qG4, \$\n"
-        "mov qG5, \$\n"
+    @if __ARRIS_ARCH == "x86_64"
+    @if __ARRIS_OS == "linux"
+    __asm__ {
+        "mov rax, \$\n"
+        "mov rdi, \$\n"
+        "mov rsi, \$\n"
+        "mov rdx, \$\n"
+        "mov r10, \$\n"
+        "mov r8, \$\n"
         "syscall",
         id, a1, a2, a3, a4, a5
     };
+    @else
+    @err "Arris Standard Library does not support \$ OS", __ARRIS_OS
+    @else
+    @err "Arris Standard Library does not support \$ architecture", __ARRIS_ARCH
+    @end
 }
 
 func void __arris_exit(int code) {
-    __arris_syscall(0, (long)code, 0, 0, 0, 0);
+    @if __ARRIS_OS == "linux"
+    __arris_syscall(60, (long)code, 0, 0, 0, 0);
+    @else
+    @err "Arris Standard Library does not support \$ OS", __ARRIS_OS
+    @end
 }

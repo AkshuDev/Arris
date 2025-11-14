@@ -1,9 +1,29 @@
-@inc "stdlib/acore.alib"
+@inc "<acore.alib>"
+@inc "<utils.alib>"
 
-func void print(char* v, int fd, int len) {
-    __arris_syscall(2, (long)fd, (long)len, (long)v, 0, 0);
+## Prints a string on the specified descriptor with the specified length
+func void print_raw(char* str, int fd, int len) {
+    @if __ARRIS_OS == "linux"
+    __arris_syscall(1, (long)fd, (long)str, (long)len);
+    @else
+    @err "Arris Standard Library does not support \$ OS", __ARRIS_OS
+    @end
 }
 
-func void print_stdout(char* v) {
-    print(v, 0, 15);
+## Gets the length of the string
+func int strlen(char* s) {
+    ret (int)__arris__compilerinjected__strlen(s) ## Compiler injected!
 }
+
+## Emits, outputs a string to specified descriptor
+func void emits(char* str, int fd) {
+    let int len = strlen(str);
+    print_raw(str, fd, len);
+}
+
+## Prints a string on stdout 
+func void print(char* str) {
+    emits(str, 0);
+}
+
+## Prints a string on stdout with formatting for integers and more

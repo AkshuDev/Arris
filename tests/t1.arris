@@ -1,7 +1,0 @@
-@inc "stdlib/stdio.alib"
-
-global let char* myvar = "hi"
-
-func int main() {
-    print_stdout(myvar)
-}
